@@ -2,7 +2,7 @@
 Analysing translational movement.
 '''
 
-from .movemeter import Movemeter
+from .movemeter_class import Movemeter
 from .roi import gen_grid
 
 
