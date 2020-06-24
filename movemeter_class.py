@@ -1,14 +1,10 @@
 '''
 Analyse translational movement from a time series of images.
-
-Uses OpenCV's template matching (normalized cross-correlation, cv2.TM_CCOEFF_NORMED)
-which may be GPU accerelated in case if OpenCV is build with OpenCL support and OpenCL
-is correctly configured on the platform
-    (If this not true, consider writing custom OpenCL kernels, see below).
+Uses OpenCV's template matching (normalized cross-correlation, cv2.TM_CCOEFF_NORMED).
 
 
 TODO
-    Considerations on possible backend implementations
+    Backend implementations
 
         IMPLEMENTATION          THOUGHTS                                    STATUS
         openCV                  Is good but a big dependency                Works
@@ -24,6 +20,8 @@ TODO
 '''
 
 import os
+import time
+import multiprocessing
 
 import exifread
 import numpy as np
@@ -50,7 +48,8 @@ class Movemeter:
     # ---------------
     # PRIVATE METHODS
 
-    def __init__(self, cc_backend='OpenCV', imload_backend='OpenCV', upscale=1):
+    def __init__(self, cc_backend='OpenCV', imload_backend='OpenCV', upscale=1,
+            multiprocess=False, print_callback=print):
         '''
         Initializing the movemeter.
         
@@ -61,12 +60,19 @@ class Movemeter:
         stacks                  List of stacks, where a stack is list of image filenames [fn1, fn2, ...]
         cc_backend              Either 'OpenCV',
         im_backend              Either 'OpenCV' or 'tifffile'. CAN also be a callable, that returns in similar format.
+        multiprocess            If False, no multiprocessing. Otherwise interger to specify number of sub processes
+        print_callback          If a custom print is desired instead python's print function
         '''
         
         self.upscale = upscale
 
         self.cc_backend = cc_backend
         self.im_backend = imload_backend
+
+        self.multiprocess = multiprocess
+        self.print_callback = print_callback
+
+        self.stop = False
 
         # IMAGE LOADING BACKEND
 
@@ -118,7 +124,7 @@ class Movemeter:
         
         # Grayscale by taking first channel if color image
         if len(image.shape) == 3:
-            print("Color image ({}), grayscaling it by dropping dimensions.".format(image.shape))
+            self.print_callback("Color image ({}), grayscaling it by dropping dimensions.".format(image.shape))
             image = image[:,:,0]
 
        
@@ -126,17 +132,19 @@ class Movemeter:
         image -= np.min(image)
         image = (image / np.max(image)) * 1000
 
-
         return image.astype(np.float32)
     
 
-    def _measure_movement_optimized_xray_data(self, image_fns, ROIs, max_movement=False):
+    def _measure_movement_optimized_xray_data(self, image_fns, ROIs,
+            max_movement=False, results_list=None, worker_i=0, messages=[]):
         '''
         Optimized version when there's many rois and subtract previous is True and compare_to_first is False.
         '''
-        print('Running optimized version for xray data')
 
         results = []
+
+        if worker_i == False:
+            nexttime = time.time()
 
         # Create a mask image that is subtracted from the images to enhance moving features
         mask_image = self._imread(image_fns[0]) 
@@ -151,13 +159,17 @@ class Movemeter:
  
         for i, fn in enumerate(image_fns[1:]):
 
-            print('Frame {}/{}'.format(i+1, len(image_fns)))
-           
             image = self._imread(fn) - mask_image
             
             for i_roi, ROI in enumerate(ROIs):
-                print('  _ROI: {}/{}'.format(i+1, len(ROIs)))
                 
+                if worker_i == False and nexttime < time.time():
+                    percentage = int(100*(i*len(ROIs) + i_roi) / (len(ROIs)*len(image_fns)))
+                    message = 'Process #1 out of {}, frame {}/{}, in ROI {}/{}. Done {}%'.format(
+                            int(self.multiprocess), i+1,len(image_fns),i_roi+1,len(ROIs),int(percentage))
+                    messages.append(message)
+                    nexttime = time.time() + 2
+
                 x, y = self._findTranslation(image, previous_image, ROI,
                         max_movement=int(max_movement), upscale=self.upscale)
                     
@@ -178,7 +190,11 @@ class Movemeter:
             y = np.cumsum(y)
 
             results.append([x.tolist(), y.tolist()])
-    
+        
+        if results_list is not None:
+            results_list[worker_i] = results
+            return None
+
         return results
 
 
@@ -268,7 +284,7 @@ class Movemeter:
         
         self.stacks = stacks
         # DETERMINE
-        print('Determining stack/ROI relationships in movemeter')
+        self.print_callback('Determining stack/ROI relationships in movemeter')
         if len(ROIs) > 1:
             # Separate ROIs for each stack
             self.ROIs = ROIs
@@ -309,14 +325,74 @@ class Movemeter:
 
             Ordering is quaranteed to be same as when setting data in Movemeter's setData
         '''
-        
-        if self.subtract_previous == True and self.compare_to_first == False:
-            results = self._measure_movement_optimized_xray_data(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement)
+        start_time = time.time()
+        self.print_callback('Starting to analyse stack {}/{}'.format(stack_i+1, len(self.stacks)))
+
+        if self.multiprocess:
+            
+            # Create multiprocessing manager and a inter-processes
+            # shared results_list
+            manager = multiprocessing.Manager()
+            results_list = manager.list()
+            messages = manager.list()
+            for i in range(self.multiprocess):
+                results_list.append([])
+            
+            # Select target _measure_movement
+            if self.subtract_previous == True and self.compare_to_first == False:
+                self.print_callback('Targeting to optimized version for xray data')
+                target = self._measure_movement_optimized_xray_data
+            else:
+                target = self._measure_movement
+    
+            # Create and start workers
+            workers = []
+            work_chunk = int(len(self.ROIs[stack_i]) / self.multiprocess)
+            for i_worker in range(self.multiprocess): 
+
+                if i_worker == self.multiprocess - 1:
+                    worker_ROIs = self.ROIs[stack_i][i_worker*work_chunk:]
+                else:
+                    worker_ROIs = self.ROIs[stack_i][i_worker*work_chunk:(i_worker+1)*work_chunk]
+                
+                worker = multiprocessing.Process(target=target,
+                        args=[self.stacks[stack_i], worker_ROIs],
+                        kwargs={'max_movement': max_movement, 'results_list': results_list,
+                            'worker_i': i_worker, 'messages': messages} )
+                
+                workers.append(worker)
+                worker.start()
+
+            # Wait until all workers get ready
+            for i_worker, worker in enumerate(workers):
+                self.print_callback('Waiting worker #{} to finish'.format(i_worker+1))
+                while worker.is_alive():
+                    if messages:
+                        self.print_callback(messages[-1])
+                    time.sleep(1)
+                worker.join()
+
+            # Combine workers' results
+            self.print_callback('Combining results from different workers')
+            results = []
+            for worker_results in results_list:
+                results.extend(worker_results)
+
         else:
-            results = self._measure_movement(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement)
+            # No multiprocessing
+            if self.subtract_previous == True and self.compare_to_first == False:
+                results = self._measure_movement_optimized_xray_data(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement)
+            else:
+                results = self._measure_movement(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement)
+        
+
+        self.print_callback('Finished stack {}/{} in {} secods'.format(stack_i+1, len(self.stacks), time.time()-start_time))
+
         return results 
 
-
+    
+    def stop():
+        self._stop = True
 
 
     # ---------------------------------------------------
