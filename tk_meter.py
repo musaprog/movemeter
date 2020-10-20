@@ -259,7 +259,8 @@ class MovemeterTkGui(tk.Frame):
 
         print('Selected folder {}'.format(folder))
 
-        self.image_fns = [os.path.join(folder, fn) for fn in os.listdir(folder) if fn.endswith('.tiff')]
+        self.image_fns = [os.path.join(folder, fn) for fn in os.listdir(folder) if fn.endswith('.tiff') or fn.endswith('.tif')]
+        self.image_fns.sort()
 
         self.images = [None for fn in self.image_fns]
         self.mask_image = None
