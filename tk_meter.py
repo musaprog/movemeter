@@ -221,10 +221,12 @@ class MovemeterTkGui(tk.Frame):
     def open_directory(self, directory=None):
         
         if directory is None:
-            
-            with open('last_directory.txt', 'r') as fp:
-                previous_directory = fp.read().rstrip('\n')
-            
+            try: 
+                with open('last_directory.txt', 'r') as fp:
+                    previous_directory = fp.read().rstrip('\n')
+            except FileNotFoundError:
+                previous_directory = os.getcwd()
+
             print(previous_directory)
 
             if os.path.exists(previous_directory):
