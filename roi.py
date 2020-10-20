@@ -1,15 +1,19 @@
 '''
-Different ways to autogenerate ROIs.
+Parametric functions to generate ROIs or grids or
+other combinations of ROIs
 '''
 
 
 def gen_grid(gridpos, blocksize, step=1):
     '''
-    Generate a regular grid of blocks.
+    Fill a large ROI (gridpos) with smaller ROIs to create
+    a grid of ROIs.
 
-    gridpos         (x,y,w,h)
-    blocksize        (x,y)
-    step            in blocks
+    gridpos         (x,y,w,h) in pixels
+    blocksize       (x,y) in pixels
+    step            Relative step between grids, in blocks
+
+    Returns a list of ROIs (x,y,w,h)
     '''
     
     blocks = []
@@ -29,6 +33,3 @@ def gen_grid(gridpos, blocksize, step=1):
             blocks.append([int(bx),int(by),bw,bh])
     
     return blocks
-
-
-

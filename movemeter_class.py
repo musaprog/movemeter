@@ -1,26 +1,9 @@
 '''
-Analyse translational movement from a time series of images.
+Contains the Movemeter class for analysing translational movement from a time series
+of images.
 
-Uses OpenCV's template matching (normalized cross-correlation, cv2.TM_CCOEFF_NORMED)
-which may be GPU accerelated in case if OpenCV is build with OpenCL support and OpenCL
-is correctly configured on the platform
-    (If this not true, consider writing custom OpenCL kernels, see below).
-
-
-TODO
-    Considerations on possible backend implementations
-
-        IMPLEMENTATION          THOUGHTS                                    STATUS
-        openCV                  Is good but a big dependency                Works
-        openCL kernels          May be faster but not always supported      na        
-        C                       Widely supported but has to be compiled     na
-        python using numpy      Widely supported                            na
-        pure python             Slow
-
-    Automated batching to the uni cluster / other distributed computing platform?
-        - time to transfer the data there may be limiting
-
-
+Under the hood, it uses OpenCV's template matching (normalized cross-correlation,
+cv2.TM_CCOEFF_NORMED). Also other backends are supported (but currently, not implemeted).
 '''
 
 import os
@@ -41,26 +24,46 @@ class Movemeter:
     ------------
     Attributers
     ------------
-    self.cc_backend     Movement analysis backend
+    self.cc_backend     Movement analysis backend.
     self.im_backend     Image loading backend
     self.upscale        Amount to upscale during movement analysing
+    
+    self.subtract_previous
+    self.tracking_rois
+    self.compare_to_first
+    
+    --------
+    METHODS
+    --------
+    self.set_data
+    self.measure_movement
+    self.get_metadata
+    self.get_image_resolution
+ 
+    ----------------
+    PRIVATE METHODS
+    ----------------
+    self._imread
+    self._find_translation
 
+   
     '''
     
-    # ---------------
-    # PRIVATE METHODS
 
     def __init__(self, cc_backend='OpenCV', imload_backend='OpenCV', upscale=1):
         '''
-        Initializing the movemeter.
-        
-        The first time this can be slow if the libraries needed for the selected
-        backends have not been imported before.
+        Initialize the movemeter.
+        The backends and the upscale factor can be specified.         
 
         INPUT ARGUMETNS         DESCRIPTION
-        stacks                  List of stacks, where a stack is list of image filenames [fn1, fn2, ...]
-        cc_backend              Either 'OpenCV',
-        im_backend              Either 'OpenCV' or 'tifffile'. CAN also be a callable, that returns in similar format.
+        cc_backend              Backend to calculate the "cross-correlation".
+                                    Currently only 'OpenCV' is supported
+        im_backend              Backend to open the images.             
+                                    Currently 'OpenCV' and 'tifffile' are supported.
+                                    Can also be a callable, that takes in a filenam and
+                                        returns a 2D numpy array.
+        
+        
         '''
         
         self.upscale = upscale
@@ -69,7 +72,6 @@ class Movemeter:
         self.im_backend = imload_backend
 
         # IMAGE LOADING BACKEND
-
         if imload_backend == 'OpenCV':
             import cv2
             self.imload = lambda fn: cv2.imread(fn, -1)
@@ -80,6 +82,7 @@ class Movemeter:
 
         elif callable(imload_backend):
             self.imload = imload_backend 
+
         else:
             raise ValueError('Given backend {} is not "OpenCV" or "tifffile" or a callable'.format(print(imload_backend)))
         
@@ -95,19 +98,23 @@ class Movemeter:
         self.tracking_rois = False
         self.compare_to_first = True
 
+
+
     @staticmethod
     def _find_translation(im, im_ref, crop):
         '''
-        This method is overwritten by any cross-correlation backend that is
-        to be loaded.
+        This method is overwritten by any cross-correlation backend that is loaded.
         '''
         raise NotImplementedError('_findTranslation (a method in Movemeter class) needs to be overridden by the selected cc_backend implementation.')
     
-   
+
+
     def _imread(self, fn):
         '''
-        Abstract image read method, that loads the image using imload_backend's function
-        and preprocesses the image using im_processing_func's callable.
+        Wrapper for self.imload (that depends on the image load backed).
+
+        Verifies the dimensionality of the loaded data and normalizes 
+        the image to float32 range.
         '''
         
         # If fn is an image already (np.array) just pass, otherwise, load
@@ -123,16 +130,19 @@ class Movemeter:
 
        
         # Normalize values to interval 0...1000
+        # FIXME Is the range 0...1000 optimal?
         image -= np.min(image)
         image = (image / np.max(image)) * 1000
 
-
+        # FIXME Add option for image data type / not to enforce data type
         return image.astype(np.float32)
     
 
-    def _measure_movement_optimized_xray_data(self, image_fns, ROIs, max_movement=False):
+
+    def _measure_movement_optimized_manyrois(self, image_fns, ROIs, max_movement=False):
         '''
-        Optimized version when there's many rois and subtract previous is True and compare_to_first is False.
+        Optimized version when there's many rois and subtract previous
+        is True and compare_to_first is False.
         '''
         print('Running optimized version for xray data')
 
@@ -182,7 +192,6 @@ class Movemeter:
         return results
 
 
-
     def _measure_movement(self, image_fns, ROIs, max_movement=False):
         '''
         Generic way to analyse movement using _findTranslation.
@@ -210,9 +219,6 @@ class Movemeter:
                 print('ROI IS {}'.format(ROI))
                 print('Frame {}/{}'.format(i+1, len(image_fns)))
                 
-                #fn = image_fns[3] 
-                #print(fn)
-
                 if self.compare_to_first == False:
                     print('not comparing to first')
                     if self.subtract_previous:
@@ -251,8 +257,6 @@ class Movemeter:
         return results
 
 
-    # --------------------
-    # MOVEMENT MEASUREMENT
 
     def set_data(self, stacks, ROIs):
         '''
@@ -285,42 +289,31 @@ class Movemeter:
         self.ROIs = [[[int(x), int(y), int(w), int(h)] for x,y,w,h in ROI] for ROI in self.ROIs]
 
 
-    
-    def measure_all(self, max_movement=False, message='{}/{}'):
-        '''
-        Analysing translational movement in stacks and ROIs that has been set in Movemeter's setData.
-        '''
-        pass
-        #for stack_i in range
 
-
-
-    def measure_movement(self, stack_i, use_motion_correction=False, max_movement=False):
+    def measure_movement(self, stack_i, max_movement=False):
         '''
-        Analysing translational movement in stacks and ROIs that has been set in Movemeter's setData.
+        Analysing translational movement in stacks and ROIs (set with set_data method)
         
         INPUT ARGUMETS      DESCRIPTION
         stack_i             Analyse only stack with index stack_i
+        max_movement        Speed up the computation by specifying the maximum translation
+                                between subsequent frames, in pixels.
 
         Returns
-        - [results_stack1, results_stack2, ...]
-            where results_stack1 = [results_ROI1_for_stack1, results_ROI2_for_stack1, ...]
-            where results_ROI1_for_stack1 = [movement_points_in_X, movement_points_in_Y]
+            results_stack_i = [results_ROI1_for_stack_i, results_ROI2_for_stack_i, ...]
+            where results_ROIj_for_stack_i = [movement_points_in_X, movement_points_in_Y]
 
             Ordering is quaranteed to be same as when setting data in Movemeter's setData
         '''
         
         if self.subtract_previous == True and self.compare_to_first == False:
-            results = self._measure_movement_optimized_xray_data(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement)
+            results = self._measure_movement_optimized_manyrois(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement)
         else:
             results = self._measure_movement(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement)
-        return results 
+        
+        return results
 
 
-
-
-    # ---------------------------------------------------
-    # METHODS TO GET INFORMATION ABOUT THE IMAGES LOADED
 
     def get_metadata(self, stack_i, image_i=0):
         '''

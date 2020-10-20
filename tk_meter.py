@@ -1,11 +1,7 @@
 '''
-
-TODO
-    - SOMEWHAT DONE? multi-inputfolder mode
-    - free draw region in which the ROIs are placed
-    - MOSTLY DONE exporting/saving the data
-    - image heatmap
+A tkinter GUI for Movemeter.
 '''
+
 import os
 import json
 
@@ -22,7 +18,11 @@ from tk_steroids.matplotlib import CanvasPlotter
 from movemeter import gen_grid
 from movemeter import Movemeter
 
+
 class MovemeterTkGui(tk.Frame):
+    '''
+    Class documentation TODO.
+    '''
 
     def __init__(self, tk_parent):
         tk.Frame.__init__(self, tk_parent)
@@ -136,8 +136,6 @@ class MovemeterTkGui(tk.Frame):
         self.heatmapcap_slider.set(20)
         self.heatmapcap_slider.grid(row=0, column=2) 
        
-        #self.open_directory(directory='/home/joni/smallbrains-nas1/array1/xray_ESRF2/flattened_ESRF2/fly4/fly4/temp_flattened_head_SI1500/')
-        #self.open_directory(directory='/home/joni/smallbrains-nas1/array1/xray_ESRF2/flattened_ESRF2/fly6/fly6/temp_flattened_head_SI1500/')
 
 
     def folder_selected(self, folder):
@@ -249,6 +247,7 @@ class MovemeterTkGui(tk.Frame):
         for x,y in self.results[:50]:
             self.results_plotter.plot(np.sqrt(np.array(x)**2+np.array(y)**2), ax_clear=False, color='red')
 
+
     def calculate_heatmap(self):
 
         self.heatmap_images = []
@@ -342,7 +341,6 @@ class MovemeterTkGui(tk.Frame):
 
             
           
-
     def open_directory(self, directory=None):
         
         if directory is None:
@@ -355,8 +353,11 @@ class MovemeterTkGui(tk.Frame):
 
 
 def main():
+    '''
+    Initialize tkinter and place the Movemeter GUI
+    on the window.
+    '''
     root = tk.Tk()
-    #root.geometry("800x600")
     gui = MovemeterTkGui(root)
     gui.grid()
     root.mainloop()
