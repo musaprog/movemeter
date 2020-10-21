@@ -14,8 +14,8 @@ pip install https://github.com/jkemppainen/movemeter/archive/master.zip
 
 To open the unfinished GUI, issue the following in Python
 
-'''
+```python
 import movemeter.tk_meter as tkmeter
 tkmeter.main()
-'''
+```
 
