@@ -3,6 +3,14 @@ import setuptools
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+install_requires = [
+        'numpy',
+        'matplotlib',
+        'tifffile',
+        'Pillow',
+        'opencv-python',
+        ]
+
 setuptools.setup(
     name="movemeter-jkemppainen", # Replace with your own username
     version="0.0.1",
@@ -13,7 +21,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/jkemppainen/movemeter",
     packages=setuptools.find_packages(),
-    packages.extend(['tk_steroids']),
+    install_requires=install_requires,
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3) ",
