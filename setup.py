@@ -8,6 +8,7 @@ install_requires = [
         'matplotlib',
         'tifffile',
         'Pillow',
+        'ExifRead',
         'opencv-python',
         ]
 
