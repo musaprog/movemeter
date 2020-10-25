@@ -14,7 +14,7 @@ install_requires = [
         ]
 
 setuptools.setup(
-    name="movemeter-jkemppainen", # Replace with your own username
+    name="movemeter",
     version="0.0.1",
     author="Joni Kemppainen",
     author_email="jjtkemppainen1@sheffield.ac.uk",
