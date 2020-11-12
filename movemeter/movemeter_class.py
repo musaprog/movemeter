@@ -59,7 +59,7 @@ class Movemeter:
 
     '''    
 
-    def __init__(self, upscale=1, cc_backend='OpenCV', imload_backend='OpenCV'
+    def __init__(self, upscale=1, cc_backend='OpenCV', imload_backend='OpenCV',
             absolute_results=False, tracking_rois=False, compare_to_first=True,
             subtract_previous=False, multiprocess=False, print_callback=print):
         
