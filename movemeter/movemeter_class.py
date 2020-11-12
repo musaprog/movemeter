@@ -46,8 +46,7 @@ class Movemeter:
     PRIVATE METHODS
     ----------------
     self._imread
-    self._find_translation
-
+    self._find_location
    
     '''
     
@@ -102,22 +101,22 @@ class Movemeter:
         # CROSS CORRELATION BACKEND
         
         if cc_backend == 'OpenCV':
-            from .cc_backends.opencv import _find_translation
-            self._findTranslation = _find_translation
+            from .cc_backends.opencv import _find_location
+            self._find_location = _find_location
        
         # Movement measure settings
         self.subtract_previous = False
         self.tracking_rois = False
         self.compare_to_first = True
-
+        self.absolute_results = absolute_results
 
 
     @staticmethod
-    def _find_translation(im, im_ref, crop):
+    def _find_location(im, ROI, im_ref):
         '''
         This method is overwritten by any cross-correlation backend that is loaded.
         '''
-        raise NotImplementedError('_findTranslation (a method in Movemeter class) needs to be overridden by the selected cc_backend implementation.')
+        raise NotImplementedError('_find_location (a method in Movemeter class) needs to be overridden by the selected cc_backend implementation.')
     
 
 
@@ -186,7 +185,7 @@ class Movemeter:
                     messages.append(message)
                     nexttime = time.time() + 2
 
-                x, y = self._findTranslation(image, previous_image, ROI,
+                x, y = self._find_location(image, ROI, previous_image,
                         max_movement=int(max_movement), upscale=self.upscale)
                     
                 X[i_roi].append(x)
@@ -217,7 +216,7 @@ class Movemeter:
 
     def _measure_movement(self, image_fns, ROIs, max_movement=False):
         '''
-        Generic way to analyse movement using _findTranslation.
+        Generic way to analyse movement using _find_location.
         
         Could be overridden by a cc_backend.
         '''
@@ -255,7 +254,7 @@ class Movemeter:
                 else:
                     image = self._imread(fn)
                 
-                x, y = self._findTranslation(image, previous_image, [int(c) for c in ROI],
+                x, y = self._find_location(image, [int(c) for c in ROI], previous_image, 
                         max_movement=int(max_movement), upscale=self.upscale)
                     
                 X.append(x)

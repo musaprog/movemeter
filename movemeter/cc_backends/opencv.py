@@ -14,24 +14,44 @@ def resize(image, factor):
     return cv2.resize(image, (w,h))
 
 
-def _find_translation(orig_im, orig_im_ref, crop, max_movement=False, upscale=1):
-    
+def _find_location(orig_im, ROI, orig_im_ref, max_movement=None, upscale=1):
+    '''
+    Returns the location of orig_im, cropped with crop (x,y,w,h), in the location
+    of orig_im_ref coordinates.
+
+    orig_im         Image
+    ROI            Crop of the orig_im
+    orig_im_ref     Reference image
+    '''
     cx,cy,cw,ch = crop
-    if max_movement != False:
-        
+
+    if max_movement:
+
+        # rx,ry,rw,rh ; Coordinates for original image cropping
         rx,ry,rw,rh = (cx-max_movement, cy-max_movement, cw+2*max_movement, ch+2*max_movement)
+        
+        # Make sure not cropping too much top or left
         if rx < 0:
             rx = 0
         if ry < 0:
             ry = 0
+
+        # Make sure not cropping too much right or bottom
         ih, iw = orig_im_ref.shape
         if rx+rw>iw:
             rw -= rx+rw-iw
         if ry+rh>ih:
             rh -= rh+rh-ih
+
+        # Crop
         im_ref = np.copy(orig_im_ref[ry:ry+rh, rx:rx+rw])
+
     else:
+        # No max movement specified; Template
+        # matching the whole reference image.
         im_ref = orig_im_ref
+
+    # Select the ROI part of the template matched image
     im = np.copy(orig_im[cy:cy+ch, cx:cx+cw])
     
     im_ref /= (np.max(im_ref)/1000)
@@ -52,12 +72,10 @@ def _find_translation(orig_im, orig_im_ref, crop, max_movement=False, upscale=1)
     y /= upscale
 
     if max_movement:
-        x -= cx - rx #* upscale
-        y -= cy - ry #* upscale
-    else:
-        x -= cx
-        y -= cy
-   
+        # Correct the fact if used cropped reference image
+        x += rx
+        y += ry
+
     return x, y
 
 
