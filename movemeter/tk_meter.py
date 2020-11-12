@@ -17,6 +17,7 @@ from PIL import Image
 from tk_steroids.elements import Listbox
 from tk_steroids.matplotlib import CanvasPlotter
 
+from movemeter.directories import MOVEDIR
 from movemeter import gen_grid
 from movemeter import Movemeter
 
@@ -450,10 +451,10 @@ class MovemeterTkGui(tk.Frame):
         savename = self.export_name.get()
         zipsavename = savename
 
-        save_root = 'exports'
+        save_root = MOVEDIR
         if batch_name is not None:
             save_root = os.path.join(save_root, 'batch', batch_name)
-
+        
             zipsavename = batch_name + '_' + savename
 
 
