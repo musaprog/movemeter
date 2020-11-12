@@ -53,7 +53,8 @@ class Movemeter:
     
 
     def __init__(self, cc_backend='OpenCV', imload_backend='OpenCV', upscale=1,
-            multiprocess=False, print_callback=print):
+            multiprocess=False, print_callback=print,
+            absolute_results=False):
         '''
         Initialize the movemeter.
         The backends and the upscale factor can be specified.         
@@ -69,6 +70,7 @@ class Movemeter:
         
         multiprocess            If False, no multiprocessing. Otherwise interger to specify number of sub processes
         print_callback          If a custom print is desired instead python's print function
+        absolute_results        If True, return results in absolute image coordinates (in pixels)
         '''
         
         self.upscale = upscale
@@ -168,10 +170,10 @@ class Movemeter:
 
         previous_image = self._imread(image_fns[0]) - mask_image
 
-        X = [[0] for roi in ROIs]
-        Y = [[0] for roi in ROIs]
+        X = [[] for roi in ROIs]
+        Y = [[] for roi in ROIs]
  
-        for i, fn in enumerate(image_fns[1:]):
+        for i, fn in enumerate(image_fns[0:]):
 
             image = self._imread(fn) - mask_image
             
@@ -196,12 +198,13 @@ class Movemeter:
         
             x = np.asarray(x)
             y = np.asarray(y)
+            
+            if not self.absolute_results:
+                x = x-x[0]
+                y = y-y[0]
 
-            x = x-x[0]
-            y = y-y[0]
-
-            x = np.cumsum(x)
-            y = np.cumsum(y)
+                x = np.cumsum(x)
+                y = np.cumsum(y)
 
             results.append([x.tolist(), y.tolist()])
         
@@ -232,10 +235,10 @@ class Movemeter:
             if self.compare_to_first:
                 previous_image = self._imread(image_fns[0])
 
-            X = [0]
-            Y = [0]
+            X = []
+            Y = []
 
-            for i, fn in enumerate(image_fns[1:]):
+            for i, fn in enumerate(image_fns[0:]):
                 print('ROI IS {}'.format(ROI))
                 print('Frame {}/{}'.format(i+1, len(image_fns)))
                 
@@ -262,15 +265,18 @@ class Movemeter:
                     print('roi tracking')
                     #ROI = [ROI[0]+x, ROI[1]+y, ROI[2], ROI[3]]
                 
+                print('{} {}'.format(x,y))
+
             X = np.asarray(X)
             Y = np.asarray(Y)
 
-            X = X-X[0]
-            Y = Y-Y[0]
+            if not self.absolute_results:
+                X = X-X[0]
+                Y = Y-Y[0]
 
-            if not self.compare_to_first:
-                X = np.cumsum(X)
-                Y = np.cumsum(Y)
+                if not self.compare_to_first:
+                    X = np.cumsum(X)
+                    Y = np.cumsum(Y)
 
             results.append([X.tolist(), Y.tolist()])
         
