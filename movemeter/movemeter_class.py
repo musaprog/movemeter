@@ -16,77 +16,72 @@ import cv2
 
 
 class Movemeter:
-    '''
-    Analyses translational movement from time series of images.
+    '''Analysing translational movement from time series of images.
 
-    Usage:
-        1) set_data: Set images and ROIs (regions of interest)
-        2) measure_movement: Returns the movement data
+    Common work flow:
+        1) Create a Movemeter object by
+                meter = Movemeter()
 
-    ------------
-    Attributers
-    ------------
-    self.cc_backend     Movement analysis backend.
-    self.im_backend     Image loading backend
-    self.upscale        Amount to upscale during movement analysing
-    
-    self.subtract_previous
-    self.tracking_rois
-    self.compare_to_first
-    
-    --------
-    METHODS
-    --------
-    self.set_data
-    self.measure_movement
-    self.get_metadata
-    self.get_image_resolution
- 
-    ----------------
-    PRIVATE METHODS
-    ----------------
-    self._imread
-    self._find_location
-   
-    '''
-    
+        2) set_data: Set images and ROIs (regions of interest)
+                meter.set_data(image_stacks, ROIs)
 
-    def __init__(self, cc_backend='OpenCV', imload_backend='OpenCV', upscale=1,
-            multiprocess=False, print_callback=print,
-            absolute_results=False):
-        '''
-        Initialize the movemeter.
-        The backends and the upscale factor can be specified.         
+        3) measure_movement: Returns the movement data
+                meter.measure_movement()
 
-        INPUT ARGUMETNS         DESCRIPTION
-        cc_backend              Backend to calculate the "cross-correlation".
-                                    Currently only 'OpenCV' is supported
-        im_backend              Backend to open the images.             
-                                    Currently 'OpenCV' and 'tifffile' are supported.
-                                    Can also be a callable, that takes in a filenam and
-                                        returns a 2D numpy array.
+
+    Attributes
+    ----------
+    upscale : int
+        Amount to upscale during movement analysing, passed to the cc backend
+    cc_backend : string
+        Movement analysis backend. Currently only "OpenCV"
+    im_backend : string
+        Image loading backend. "OpenCV" or "tifffile",
+        or a callable that takes in an image filename and returns a 2D numpy array.
+
+    absolute_results : bool
+        Return results in absolute image coordinates
+    tracking_rois : bool
+        If True, ROIs are shifted between frames, following the movement
+    compare_to_first : bool
+        If True, use the ROI of the first image only to quantify the movement.
+        Good for purely translational motion when frame-to-frame displacements are
+        very small.
+    subtract_previous : bool
+        Special treatment for when there's a faint moving feature on a static
+        background.
+    multiprocess : int
+        If 0 then no multiprocessing. Otherwise the number of parallel processes.
+        Note that there may be some multiprocessing already at the cc_backend level.
+    print_callback : callable
+        Print function to convey the progress.
+        By default, this is the built-in print function.
+
+    '''    
+
+    def __init__(self, upscale=1, cc_backend='OpenCV', imload_backend='OpenCV'
+            absolute_results=False, tracking_rois=False, compare_to_first=True,
+            subtract_previous=False, multiprocess=False, print_callback=print):
         
-        
-        multiprocess            If False, no multiprocessing. Otherwise interger to specify number of sub processes
-        print_callback          If a custom print is desired instead python's print function
-        absolute_results        If True, return results in absolute image coordinates (in pixels)
-        '''
-        
+        # See Class docstring for documentation
+
+        # Set the options given in constructor to same name attributes
         self.upscale = upscale
-
         self.cc_backend = cc_backend
         self.im_backend = imload_backend
-
+        self.absolute_results = absolute_results
+        self.tracking_rois = tracking_rois
+        self.compare_to_first = compare_to_first
+        self.subtract_previous = subtract_previous
         self.multiprocess = multiprocess
         self.print_callback = print_callback
 
-        self.stop = False
 
         # IMAGE LOADING BACKEND
         if imload_backend == 'OpenCV':
             import cv2
             self.imload = lambda fn: cv2.imread(fn, -1)
-        
+
         elif imload_backend == 'tifffile':
             import tifffile
             self.imload = lambda fn: tifffile.imread(fn)
@@ -98,23 +93,17 @@ class Movemeter:
             raise ValueError('Given backend {} is not "OpenCV" or "tifffile" or a callable'.format(print(imload_backend)))
         
         
-        # CROSS CORRELATION BACKEND
-        
+        # CROSS CORRELATION BACKEND        
         if cc_backend == 'OpenCV':
             from .cc_backends.opencv import _find_location
             self._find_location = _find_location
        
-        # Movement measure settings
-        self.subtract_previous = False
-        self.tracking_rois = False
-        self.compare_to_first = True
-        self.absolute_results = absolute_results
 
 
     @staticmethod
     def _find_location(im, ROI, im_ref):
         '''
-        This method is overwritten by any cross-correlation backend that is loaded.
+        This method is to be overwritten by any cross-correlation backend that is loaded.
         '''
         raise NotImplementedError('_find_location (a method in Movemeter class) needs to be overridden by the selected cc_backend implementation.')
     
@@ -397,10 +386,6 @@ class Movemeter:
         return results 
 
     
-    def stop():
-        self._stop = True
-
-
 
     def get_metadata(self, stack_i, image_i=0):
         '''
