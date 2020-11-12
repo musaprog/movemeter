@@ -39,7 +39,6 @@ class MovemeterTest(unittest.TestCase):
 
         for movemeter in self.movemeters:
             movements = movemeter.measure_movement(0)
-            print(movements)
-            self.assertEqual(movements, [[[0.0, 0.0, 0.0, -1.0, -1.0, 0.0], [0.0, 5.0, 9.0, -13.0, -16.0, -6.0]]], 'Different results in movement measurement')
+            self.assertEqual(movements, [[[0.0, 0.0, 1.0, 1.0, 1.0, 1.0], [0.0, 3.0, 10.0, 16.0, 21.0, 25.0]]], 'Different results in movement measurement')
 
 
