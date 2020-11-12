@@ -104,6 +104,15 @@ class Movemeter:
     def _find_location(im, ROI, im_ref):
         '''
         This method is to be overwritten by any cross-correlation backend that is loaded.
+        
+        Parameters
+        ----------
+        im
+            Image
+        ROI : tuple of int
+            (x,y,w,f)
+        im_ref
+            Reference image
         '''
         raise NotImplementedError('_find_location (a method in Movemeter class) needs to be overridden by the selected cc_backend implementation.')
     
@@ -273,15 +282,16 @@ class Movemeter:
 
 
     def set_data(self, stacks, ROIs):
-        '''
-        Setting image filenames and recpective ROIs (regions of interest).
+        ''' Set image filenames and regions to be analysed.
 
-        INPUT ARGUMENTS
-        stacks          List of filename lists: [ [stack1_im1, stack1_im2...],[stack2_im1, stack2_im2], ...]
-        ROIs            [[ROI1_for_stack1, ROI2_for_stack1, ...], [ROI1_for_stack2, ...],...].
-                        ROIs's length is 1 means same ROIs for all stacks
-
-                        ROI format: (x, y, w, h)
+        Parameters
+        ----------
+        stacks : list
+            List of filename lists: [ [stack1_im1, stack1_im2...],[stack2_im1, stack2_im2], ...]
+        ROIs : list
+            [[ROI1_for_stack1, ROI2_for_stack1, ...], [ROI1_for_stack2, ...],...].
+            ROIs's length is 1 means same ROIs for all stacks
+            ROI format: (x, y, w, h)
         '''
         
         self.stacks = stacks
@@ -305,19 +315,29 @@ class Movemeter:
 
 
     def measure_movement(self, stack_i, max_movement=False):
-        '''
-        Analysing translational movement in stacks and ROIs (set with set_data method)
+        ''' Run the translational movement analysis.
+
+        Image stacks and ROIs are expected to be set before using set_data method.
+        See class attributes.
+
+        Note
+        ----
+            Ordering is quaranteed to be same as when setting data in Movemeter's setData
         
-        INPUT ARGUMETS      DESCRIPTION
-        stack_i             Analyse only stack with index stack_i
-        max_movement        Speed up the computation by specifying the maximum translation
-                                between subsequent frames, in pixels.
+        Parameters
+        ----------
+        stack_i : int
+            Analyse stack with index stack_i (order according what set to set_data method)
+        max_movement : int
+            Speed up the computation by specifying the maximum translation between
+            subsequent frames, in pixels.
 
         Returns
-            results_stack_i = [results_ROI1_for_stack_i, results_ROI2_for_stack_i, ...]
+        -------
+        results_stack_i
+            [results_ROI1_for_stack_i, results_ROI2_for_stack_i, ...]
             where results_ROIj_for_stack_i = [movement_points_in_X, movement_points_in_Y]
 
-            Ordering is quaranteed to be same as when setting data in Movemeter's setData
         '''
 
         start_time = time.time()
@@ -388,10 +408,19 @@ class Movemeter:
     
 
     def get_metadata(self, stack_i, image_i=0):
-        '''
-        Uses exifread to get the metadata for stack number stack_i.
+        '''Get metadata for stack number stack_i using exifread.
+        
+        Parameters
+        ----------
+        stack_i : int
+            Index of the stack (set_data)
+        image_i : int
+            Index of the image
 
-        Returns a dictionary of exifread objects.
+        Returns
+        -------
+        tags: dict
+            A dictionary of exifread objects. See exifread documentation.
         '''
 
         with open(self.stacks[stack_i][image_i], 'rb') as fp:
@@ -404,8 +433,21 @@ class Movemeter:
         '''
         Returns resolution of the images in stack_i.
 
-        TODO: - Currently opens the first image to see the resolution (slow).
-                Would be better to read from the metadata directly
+        Note
+        ----
+            Currently opens the first image to see the resolution (slow).
+            Would be better to read from the metadata directly
+        
+        Parameters
+        ----------
+        stack_i : int
+            Index of the stack (set_data)
+
+        Returns
+        -------
+        width : int
+        height : int
+
         '''
         height, width = self._imread(self.stacks[stack_i][0]).shape
         return width, height
