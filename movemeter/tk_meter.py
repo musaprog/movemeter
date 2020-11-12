@@ -155,13 +155,13 @@ class MovemeterTkGui(tk.Frame):
         self.export_name.grid(row=4, column=2)
         
 
-        self.batch_button = tk.Button(self.opview, text='Batch measure&save all',
-                command=self.batch_process)
-        self.batch_button.grid(row=5, column=1)
+        #self.batch_button = tk.Button(self.opview, text='Batch measure&save all',
+        #        command=self.batch_process)
+        #self.batch_button.grid(row=5, column=1)
                 
-        self.batch_name = tk.Entry(self.opview, width=50)
-        self.batch_name.insert(0, "batch_name")
-        self.batch_name.grid(row=5, column=2)
+        #self.batch_name = tk.Entry(self.opview, width=50)
+        #self.batch_name.insert(0, "batch_name")
+        #self.batch_name.grid(row=5, column=2)
  
 
         # Images view: Image looking and ROI selection
