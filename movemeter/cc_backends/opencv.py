@@ -23,7 +23,7 @@ def _find_location(orig_im, ROI, orig_im_ref, max_movement=None, upscale=1):
     ROI            Crop of the orig_im
     orig_im_ref     Reference image
     '''
-    cx,cy,cw,ch = crop
+    cx,cy,cw,ch = ROI
 
     if max_movement:
 
