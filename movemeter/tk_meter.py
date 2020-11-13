@@ -14,7 +14,7 @@ from tkinter import filedialog
 import matplotlib.patches
 from PIL import Image
 
-from tk_steroids.elements import Listbox
+from tk_steroids.elements import Listbox, Tabs
 from tk_steroids.matplotlib import CanvasPlotter
 
 from movemeter.directories import MOVEDIR
@@ -184,25 +184,31 @@ class MovemeterTkGui(tk.Frame):
 
         # Results view: Analysed traces
         # ------------------------------------
-        self.resview = tk.LabelFrame(self, text='Results')
-        self.resview.grid(row=1, column=2)
+        
+        self.tabs = Tabs(self, ['Displacement', 'Heatmap'])
+        self.tabs.grid(row=1, column=2)
+        self.resview = self.tabs.pages[0]
+        self.heatview = self.tabs.pages[1]
+
+        #self.resview = tk.LabelFrame(self, text='Results')
+        #self.resview.grid(row=1, column=2)
        
         self.results_plotter = CanvasPlotter(self.resview)
         self.results_plotter.grid(row=2, column=1) 
         
-        self.heatmap_plotter = CanvasPlotter(self.resview)
+        self.heatmap_plotter = CanvasPlotter(self.heatview)
         self.heatmap_plotter.grid(row=2, column=2) 
         
-        self.heatmap_slider = tk.Scale(self.resview, from_=0, to=0,
+        self.heatmap_slider = tk.Scale(self.heatview, from_=0, to=0,
             orient=tk.HORIZONTAL, command=self.change_heatmap)
         self.heatmap_slider.grid(row=0, column=1, sticky='NSWE')
         
-        self.heatmapcap_slider = tk.Scale(self.resview, from_=0.1, to=100,
+        self.heatmapcap_slider = tk.Scale(self.heatview, from_=0.1, to=100,
             orient=tk.HORIZONTAL, resolution=0.1)
         self.heatmapcap_slider.set(20)
         self.heatmapcap_slider.grid(row=0, column=2, sticky='NSWE') 
         
-        self.heatmap_firstcap_slider = tk.Scale(self.resview, from_=0.1, to=100,
+        self.heatmap_firstcap_slider = tk.Scale(self.heatview, from_=0.1, to=100,
             orient=tk.HORIZONTAL, resolution=0.1)
         self.heatmap_firstcap_slider.set(20)
         self.heatmap_firstcap_slider.grid(row=1, column=2, sticky='NSWE') 
