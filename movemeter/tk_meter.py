@@ -229,7 +229,7 @@ class MovemeterTkGui(tk.Frame):
         
         if directory is None:
             try: 
-                with open('last_directory.txt', 'r') as fp:
+                with open(os.path.join(MOVEDIR, 'last_directory.txt'), 'r') as fp:
                     previous_directory = fp.read().rstrip('\n')
             except FileNotFoundError:
                 previous_directory = os.getcwd()
@@ -243,7 +243,7 @@ class MovemeterTkGui(tk.Frame):
             
             
         if directory:
-            with open('last_directory.txt', 'w') as fp:
+            with open(os.path.join(MOVEDIR, 'last_directory.txt'), 'w') as fp:
                 fp.write(directory)
 
             self.folders.append(directory)
