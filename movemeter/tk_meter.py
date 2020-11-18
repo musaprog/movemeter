@@ -6,6 +6,7 @@ import os
 import json
 import datetime
 import zipfile
+import inspect
 
 import numpy as np
 import tifffile
@@ -14,9 +15,11 @@ from tkinter import filedialog
 import matplotlib.patches
 from PIL import Image
 
-from tk_steroids.elements import Listbox
+from tk_steroids.elements import Listbox, Tabs, TickboxFrame
 from tk_steroids.matplotlib import CanvasPlotter
 
+from movemeter import __version__
+from movemeter.directories import MOVEDIR
 from movemeter import gen_grid
 from movemeter import Movemeter
 
@@ -82,8 +85,6 @@ class MovemeterTkGui(tk.Frame):
         self.opview = tk.LabelFrame(self, text='Command center')
         self.opview.grid(row=0, column=2, sticky='NSWE')
         
-       
-
         self.roiview = tk.LabelFrame(self.opview, text='ROI gird creation options')
         self.roiview.columnconfigure(2, weight=1)
         self.roiview.grid(row=2, column=1, columnspan=2, sticky='NSWE')
@@ -113,7 +114,25 @@ class MovemeterTkGui(tk.Frame):
         self.parview = tk.LabelFrame(self.opview, text='Movemeter parameters')
         self.parview.columnconfigure(2, weight=1)
         self.parview.grid(row=3, column=1, columnspan=2, sticky='NSWE')
+
+
+        # Movemeter True/False options; Automatically inspect from Movemeter.__init__
+        moveinsp = inspect.getfullargspec(Movemeter.__init__)
+
+        moveargs = []
+        movedefaults = []
+        for i in range(1, len(moveinsp.args)):
+            arg = moveinsp.args[i]
+            default = moveinsp.defaults[i-1]
+            if isinstance(default, bool) and arg not in ['multiprocess']:
+                moveargs.append(arg)
+                movedefaults.append(default)
         
+        self.movemeter_tickboxes = TickboxFrame(self.parview, moveargs,
+                defaults=movedefaults)
+        self.movemeter_tickboxes.grid(row=0, column=1, columnspan=2)
+
+
         tk.Label(self.parview, text='Maximum movement').grid(row=1, column=1)
         self.maxmovement_slider = tk.Scale(self.parview, from_=1, to=100,
                 orient=tk.HORIZONTAL)
@@ -154,13 +173,13 @@ class MovemeterTkGui(tk.Frame):
         self.export_name.grid(row=4, column=2)
         
 
-        self.batch_button = tk.Button(self.opview, text='Batch measure&save all',
-                command=self.batch_process)
-        self.batch_button.grid(row=5, column=1)
+        #self.batch_button = tk.Button(self.opview, text='Batch measure&save all',
+        #        command=self.batch_process)
+        #self.batch_button.grid(row=5, column=1)
                 
-        self.batch_name = tk.Entry(self.opview, width=50)
-        self.batch_name.insert(0, "batch_name")
-        self.batch_name.grid(row=5, column=2)
+        #self.batch_name = tk.Entry(self.opview, width=50)
+        #self.batch_name.insert(0, "batch_name")
+        #self.batch_name.grid(row=5, column=2)
  
 
         # Images view: Image looking and ROI selection
@@ -183,25 +202,31 @@ class MovemeterTkGui(tk.Frame):
 
         # Results view: Analysed traces
         # ------------------------------------
-        self.resview = tk.LabelFrame(self, text='Results')
-        self.resview.grid(row=1, column=2)
+        
+        self.tabs = Tabs(self, ['Displacement', 'Heatmap'])
+        self.tabs.grid(row=1, column=2)
+        self.resview = self.tabs.pages[0]
+        self.heatview = self.tabs.pages[1]
+
+        #self.resview = tk.LabelFrame(self, text='Results')
+        #self.resview.grid(row=1, column=2)
        
         self.results_plotter = CanvasPlotter(self.resview)
         self.results_plotter.grid(row=2, column=1) 
         
-        self.heatmap_plotter = CanvasPlotter(self.resview)
+        self.heatmap_plotter = CanvasPlotter(self.heatview)
         self.heatmap_plotter.grid(row=2, column=2) 
         
-        self.heatmap_slider = tk.Scale(self.resview, from_=0, to=0,
+        self.heatmap_slider = tk.Scale(self.heatview, from_=0, to=0,
             orient=tk.HORIZONTAL, command=self.change_heatmap)
         self.heatmap_slider.grid(row=0, column=1, sticky='NSWE')
         
-        self.heatmapcap_slider = tk.Scale(self.resview, from_=0.1, to=100,
+        self.heatmapcap_slider = tk.Scale(self.heatview, from_=0.1, to=100,
             orient=tk.HORIZONTAL, resolution=0.1)
         self.heatmapcap_slider.set(20)
         self.heatmapcap_slider.grid(row=0, column=2, sticky='NSWE') 
         
-        self.heatmap_firstcap_slider = tk.Scale(self.resview, from_=0.1, to=100,
+        self.heatmap_firstcap_slider = tk.Scale(self.heatview, from_=0.1, to=100,
             orient=tk.HORIZONTAL, resolution=0.1)
         self.heatmap_firstcap_slider.set(20)
         self.heatmap_firstcap_slider.grid(row=1, column=2, sticky='NSWE') 
@@ -222,7 +247,7 @@ class MovemeterTkGui(tk.Frame):
         
         if directory is None:
             try: 
-                with open('last_directory.txt', 'r') as fp:
+                with open(os.path.join(MOVEDIR, 'last_directory.txt'), 'r') as fp:
                     previous_directory = fp.read().rstrip('\n')
             except FileNotFoundError:
                 previous_directory = os.getcwd()
@@ -236,7 +261,9 @@ class MovemeterTkGui(tk.Frame):
             
             
         if directory:
-            with open('last_directory.txt', 'w') as fp:
+            if not os.path.isdir(MOVEDIR):
+                os.makedirs(MOVEDIR)
+            with open(os.path.join(MOVEDIR, 'last_directory.txt'), 'w') as fp:
                 fp.write(directory)
 
             self.folders.append(directory)
@@ -304,9 +331,12 @@ class MovemeterTkGui(tk.Frame):
             cores = int(self.cores_slider.get())
             if cores == 1:
                 cores = False
-            self.movemeter = Movemeter(upscale=float(self.upscale_slider.get()),
-                    multiprocess=cores, print_callback=self.set_status)
             
+            self.movemeter = Movemeter(upscale=float(self.upscale_slider.get()),
+                    multiprocess=cores, print_callback=self.set_status,
+                    **self.movemeter_tickboxes.states)
+           
+
             self.movemeter.subtract_previous = True
             self.movemeter.compare_to_first = False
 
@@ -450,10 +480,10 @@ class MovemeterTkGui(tk.Frame):
         savename = self.export_name.get()
         zipsavename = savename
 
-        save_root = 'exports'
+        save_root = MOVEDIR
         if batch_name is not None:
             save_root = os.path.join(save_root, 'batch', batch_name)
-
+        
             zipsavename = batch_name + '_' + savename
 
 
@@ -545,6 +575,7 @@ def main():
     on the window.
     '''
     root = tk.Tk()
+    root.title('Movemeter - Tkinter GUI - {}'.format(__version__))
     gui = MovemeterTkGui(root)
     gui.grid()
     root.mainloop()

@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import filedialog
 from tk_steroids.matplotlib import CanvasPlotter
 
+from movemeter import __version__
 import movemeter.heatmap as ht
 
 
@@ -148,6 +149,7 @@ class HeatmapPlotter(tk.Frame):
 def main():
     
     root = tk.Tk()
+    root.title('Heatmap - Tkinter GUI - {}'.format(__version__))
     gui = HeatmapPlotter(root, standalone=True)
     gui.grid()
     root.mainloop()

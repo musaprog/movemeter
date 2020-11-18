@@ -3,6 +3,9 @@ import setuptools
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+# Version number to __version__ variable
+exec(open("movemeter/version.py").read())
+
 install_requires = [
         'numpy',
         'matplotlib',
@@ -10,12 +13,12 @@ install_requires = [
         'Pillow',
         'ExifRead',
         'opencv-python',
-        'tk-steroids',
+        'tk-steroids>=0.3.0',
         ]
 
 setuptools.setup(
     name="movemeter",
-    version="0.0.1",
+    version=__version__,
     author="Joni Kemppainen",
     author_email="jjtkemppainen1@sheffield.ac.uk",
     description="A motion analysis tool",

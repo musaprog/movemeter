@@ -39,7 +39,13 @@ class MovemeterTest(unittest.TestCase):
 
         for movemeter in self.movemeters:
             movements = movemeter.measure_movement(0)
-            print(movements)
-            self.assertEqual(movements, [[[0.0, 0.0, 0.0, -1.0, -1.0, 0.0], [0.0, 5.0, 9.0, -13.0, -16.0, -6.0]]], 'Different results in movement measurement')
+            self.assertEqual(movements, [[[0.0, 0.0, 1.0, 1.0, 1.0, 1.0], [0.0, 3.0, 10.0, 16.0, 21.0, 25.0]]], 'Different results in movement measurement')
 
+    def test_absolute_measure_movement(self):
+        
+        for movemeter in self.movemeters:
+            movemeter.absolute_results = True
+            movements = movemeter.measure_movement(0)
+            self.assertEqual(movements, [[[130.0, 130.0, 131.0, 131.0, 131.0, 131.0], [500.0, 503.0, 510.0, 516.0, 521.0, 525.0]]], 'Different results in movement measurement')
+            movemeter.absolute_results = False
 
