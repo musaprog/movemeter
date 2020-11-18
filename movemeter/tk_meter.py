@@ -6,6 +6,7 @@ import os
 import json
 import datetime
 import zipfile
+import inspect
 
 import numpy as np
 import tifffile
@@ -14,7 +15,7 @@ from tkinter import filedialog
 import matplotlib.patches
 from PIL import Image
 
-from tk_steroids.elements import Listbox, Tabs
+from tk_steroids.elements import Listbox, Tabs, TickboxFrame
 from tk_steroids.matplotlib import CanvasPlotter
 
 from movemeter import __version__
@@ -84,8 +85,6 @@ class MovemeterTkGui(tk.Frame):
         self.opview = tk.LabelFrame(self, text='Command center')
         self.opview.grid(row=0, column=2, sticky='NSWE')
         
-       
-
         self.roiview = tk.LabelFrame(self.opview, text='ROI gird creation options')
         self.roiview.columnconfigure(2, weight=1)
         self.roiview.grid(row=2, column=1, columnspan=2, sticky='NSWE')
@@ -115,7 +114,25 @@ class MovemeterTkGui(tk.Frame):
         self.parview = tk.LabelFrame(self.opview, text='Movemeter parameters')
         self.parview.columnconfigure(2, weight=1)
         self.parview.grid(row=3, column=1, columnspan=2, sticky='NSWE')
+
+
+        # Movemeter True/False options; Automatically inspect from Movemeter.__init__
+        moveinsp = inspect.getfullargspec(Movemeter.__init__)
+
+        moveargs = []
+        movedefaults = []
+        for i in range(1, len(moveinsp.args)):
+            arg = moveinsp.args[i]
+            default = moveinsp.defaults[i-1]
+            if isinstance(default, bool) and arg not in ['multiprocess']:
+                moveargs.append(arg)
+                movedefaults.append(default)
         
+        self.movemeter_tickboxes = TickboxFrame(self.parview, moveargs,
+                defaults=movedefaults)
+        self.movemeter_tickboxes.grid(row=0, column=1, columnspan=2)
+
+
         tk.Label(self.parview, text='Maximum movement').grid(row=1, column=1)
         self.maxmovement_slider = tk.Scale(self.parview, from_=1, to=100,
                 orient=tk.HORIZONTAL)
