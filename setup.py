@@ -13,7 +13,7 @@ install_requires = [
         'Pillow',
         'ExifRead',
         'opencv-python',
-        'tk-steroids',
+        'tk-steroids>=0.3.0',
         ]
 
 setuptools.setup(
