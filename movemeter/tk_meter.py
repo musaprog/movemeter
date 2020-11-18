@@ -261,6 +261,8 @@ class MovemeterTkGui(tk.Frame):
             
             
         if directory:
+            if not os.path.isdir(MOVEDIR):
+                os.makedirs(MOVEDIR)
             with open(os.path.join(MOVEDIR, 'last_directory.txt'), 'w') as fp:
                 fp.write(directory)
 
