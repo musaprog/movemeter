@@ -17,6 +17,7 @@ from PIL import Image
 from tk_steroids.elements import Listbox, Tabs
 from tk_steroids.matplotlib import CanvasPlotter
 
+from movemeter import __version__
 from movemeter.directories import MOVEDIR
 from movemeter import gen_grid
 from movemeter import Movemeter
@@ -552,6 +553,7 @@ def main():
     on the window.
     '''
     root = tk.Tk()
+    root.title('Movemeter - Tkinter GUI - {}'.format(__version__))
     gui = MovemeterTkGui(root)
     gui.grid()
     root.mainloop()
