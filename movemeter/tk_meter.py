@@ -331,9 +331,12 @@ class MovemeterTkGui(tk.Frame):
             cores = int(self.cores_slider.get())
             if cores == 1:
                 cores = False
-            self.movemeter = Movemeter(upscale=float(self.upscale_slider.get()),
-                    multiprocess=cores, print_callback=self.set_status)
             
+            self.movemeter = Movemeter(upscale=float(self.upscale_slider.get()),
+                    multiprocess=cores, print_callback=self.set_status,
+                    **self.movemeter_tickboxes.states)
+           
+
             self.movemeter.subtract_previous = True
             self.movemeter.compare_to_first = False
 
