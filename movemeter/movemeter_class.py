@@ -39,6 +39,10 @@ class Movemeter:
         Image loading backend. "OpenCV" or "tifffile",
         or a callable that takes in an image filename and returns a 2D numpy array.
 
+        Note:
+        tifffile supports multipage images (many frames/images in a single file) and
+        OpenCV doesn't.
+
     absolute_results : bool
         Return results in absolute image coordinates
     tracking_rois : bool
@@ -59,7 +63,7 @@ class Movemeter:
 
     '''    
 
-    def __init__(self, upscale=1, cc_backend='OpenCV', imload_backend='OpenCV',
+    def __init__(self, upscale=1, cc_backend='OpenCV', imload_backend='tifffile',
             absolute_results=False, tracking_rois=False, compare_to_first=True,
             subtract_previous=False, multiprocess=False, print_callback=print):
         
@@ -124,19 +128,23 @@ class Movemeter:
 
         Verifies the dimensionality of the loaded data and normalizes 
         the image to float32 range.
-        '''
+
         
+        Returns dim=3 numpy array where axis=0 is the number of pages (images)
+        in the tiff file.
+        '''
+
         # If fn is an image already (np.array) just pass, otherwise, load
         if type(fn) == np.ndarray:
             pass
         else:
             image = self.imload(fn)
         
-        # Grayscale by taking first channel if color image
+        # Check if the image file is actually a stack of many images.
         if len(image.shape) == 3:
-            self.print_callback("Color image ({}), grayscaling it by dropping dimensions.".format(image.shape))
-            image = image[:,:,0]
-
+            pass 
+        else:
+            image = [image]
        
         # Normalize values to interval 0...1000
         # FIXME Is the range 0...1000 optimal?
@@ -145,7 +153,28 @@ class Movemeter:
 
 
         return image.astype(np.float32)
+
     
+    def create_mask_image(image_fns):
+        '''
+        Create a mask image that is subtracted from the images to enhance moving features
+        Seems to work well with X-ray data.
+        '''
+
+        mask_image = self._imread(image_fns[0])
+        
+        for image in mask_image:
+            mask_image = np.min([mask_image, image], axis=0)
+
+        for fn in image_fns[1:]:
+            for image in self._imread(fn):
+                mask_image = np.min([mask_image, image], axis=0)
+        
+        # Reset stack index if reading a stack
+        self.stack_index = 0
+
+        return mask_image
+
 
     def _measure_movement_optimized_xray_data(self, image_fns, ROIs,
             max_movement=False, results_list=None, worker_i=0, messages=[]):
@@ -159,38 +188,37 @@ class Movemeter:
         if worker_i == False:
             nexttime = time.time()
 
-        # Create a mask image that is subtracted from the images to enhance moving features
-        mask_image = self._imread(image_fns[0]) 
-        for fn in image_fns[1:]:
-            mask_image = np.min([mask_image, self._imread(fn)], axis=0)
-    
+        if subtract_previous:
+            mask_image = create_mask_image(image_fns)
 
-        previous_image = self._imread(image_fns[0]) - mask_image
+        previous_image = self._imread(image_fns[0])[0] - mask_image
 
         X = [[] for roi in ROIs]
         Y = [[] for roi in ROIs]
  
         for i, fn in enumerate(image_fns[0:]):
 
-            image = self._imread(fn) - mask_image
-            
-            for i_roi, ROI in enumerate(ROIs):
+            for image in self._imread(fn):
+
+                image = image - mask_image
                 
-                if worker_i == False and nexttime < time.time():
-                    percentage = int(100*(i*len(ROIs) + i_roi) / (len(ROIs)*len(image_fns)))
-                    message = 'Process #1 out of {}, frame {}/{}, in ROI {}/{}. Done {}%'.format(
-                            int(self.multiprocess), i+1,len(image_fns),i_roi+1,len(ROIs),int(percentage))
-                    messages.append(message)
-                    nexttime = time.time() + 2
-
-                x, y = self._find_location(image, ROI, previous_image,
-                        max_movement=int(max_movement), upscale=self.upscale)
+                for i_roi, ROI in enumerate(ROIs):
                     
-                X[i_roi].append(x)
-                Y[i_roi].append(y)
+                    if worker_i == False and nexttime < time.time():
+                        percentage = int(100*(i*len(ROIs) + i_roi) / (len(ROIs)*len(image_fns)))
+                        message = 'Process #1 out of {}, frame {}/{}, in ROI {}/{}. Done {}%'.format(
+                                int(self.multiprocess), i+1,len(image_fns),i_roi+1,len(ROIs),int(percentage))
+                        messages.append(message)
+                        nexttime = time.time() + 2
 
-            previous_image = image
-        
+                    x, y = self._find_location(image, ROI, previous_image,
+                            max_movement=int(max_movement), upscale=self.upscale)
+                        
+                    X[i_roi].append(x)
+                    Y[i_roi].append(y)
+
+                previous_image = image
+            
         for x,y in zip(X,Y):
         
             x = np.asarray(x)
@@ -218,51 +246,60 @@ class Movemeter:
         
         Could be overridden by a cc_backend.
         '''
-        
+       
         results = []
-     
+
+        # Number of frames hiding in the stacks, not apparent from the image
+        # file count. Can change during the analysis while reading images.
+        N_stacked = 0
+ 
         if self.subtract_previous:
-            mask_image = self._imread(image_fns[0])
-            
-            for fn in image_fns[1:]:
-                mask_image = np.min([mask_image, self._imread(fn)], axis=0)
-        
-        for i, ROI in enumerate(ROIs):
-            print('  _measureMovement: {}/{}'.format(i+1, len(ROIs)))
+            mask_image = create_mask_image(image_fns)
+
+
+        for i_roi, ROI in enumerate(ROIs):
+            print('  _measureMovement: {}/{}'.format(i_roi+1, len(ROIs)))
             if self.compare_to_first:
-                previous_image = self._imread(image_fns[0])
+                previous_image = self._imread(image_fns[0])[0]
 
             X = []
             Y = []
 
-            for i, fn in enumerate(image_fns[0:]):
-                print('ROI IS {}'.format(ROI))
-                print('Frame {}/{}'.format(i+1, len(image_fns)))
-                
-                if self.compare_to_first == False:
-                    print('not comparing to first')
-                    if self.subtract_previous:
-                        previous_image = self._imread(image_fns[i]) -  mask_image
-                    else:
-                        previous_image = self._imread(image_fns[i])
-                
-                if self.subtract_previous:
-                    print('subtracting previous')
-                    image = self._imread(fn) - mask_image
-                else:
-                    image = self._imread(fn)
-                
-                x, y = self._find_location(image, [int(c) for c in ROI], previous_image, 
-                        max_movement=int(max_movement), upscale=self.upscale)
-                    
-                X.append(x)
-                Y.append(y)
+            i_frame = 0
 
-                if self.tracking_rois:
-                    print('roi tracking')
-                    #ROI = [ROI[0]+x, ROI[1]+y, ROI[2], ROI[3]]
+            for fn in image_fns[0:]:
                 
-                print('{} {}'.format(x,y))
+                images = self._imread(fn)
+                N_stacked += images.shape[0] - 1
+                  
+                for image in images:
+
+                    print('ROI IS {}'.format(ROI))
+                    print('Frame {}/{}'.format(i_frame, len(image_fns)+N_stacked))
+                    
+                    if self.compare_to_first == False:
+                        if self.subtract_previous:
+                            # FIXME Possible bug here
+                            previous_image = image -  mask_image
+                        else:
+                            previous_image = image
+                    
+                    if self.subtract_previous:
+                        image = image - mask_image
+                    
+                    x, y = self._find_location(image, [int(c) for c in ROI], previous_image, 
+                            max_movement=int(max_movement), upscale=self.upscale)
+                        
+                    X.append(x)
+                    Y.append(y)
+
+                    if self.tracking_rois:
+                        print('roi tracking')
+                        raise NotImplementedError
+                        #ROI = [ROI[0]+x, ROI[1]+y, ROI[2], ROI[3]]
+                    
+                    print('{} {}'.format(x,y))
+                    i_frame += 1
 
             X = np.asarray(X)
             Y = np.asarray(Y)
@@ -449,7 +486,7 @@ class Movemeter:
         height : int
 
         '''
-        height, width = self._imread(self.stacks[stack_i][0]).shape
+        height, width = self._imread(self.stacks[stack_i][0])[0].shape
         return width, height
 
        
