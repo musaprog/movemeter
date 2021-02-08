@@ -157,24 +157,19 @@ class Movemeter:
         return image
 
     
-    def create_mask_image(image_fns):
+    def create_mask_image(self, image_fns):
         '''
         Create a mask image that is subtracted from the images to enhance moving features
         Seems to work well with X-ray data.
         '''
 
         mask_image = self._imread(image_fns[0])
-        
-        for image in mask_image:
-            mask_image = np.min([mask_image, image], axis=0)
+        mask_image = np.min(mask_image, axis=0)
 
         for fn in image_fns[1:]:
             for image in self._imread(fn):
                 mask_image = np.min([mask_image, image], axis=0)
         
-        # Reset stack index if reading a stack
-        self.stack_index = 0
-
         return mask_image
 
 
@@ -183,6 +178,10 @@ class Movemeter:
         '''
         Optimized version when there's many rois and subtract previous
         is True and compare_to_first is False.
+        
+        Optimized version of measure_movement for scenarios when there are
+        many ROIs
+
         '''
 
         results = []
@@ -190,10 +189,11 @@ class Movemeter:
         if worker_i == False:
             nexttime = time.time()
 
-        if subtract_previous:
-            mask_image = create_mask_image(image_fns)
-
-        previous_image = self._imread(image_fns[0])[0] - mask_image
+        if self.subtract_previous:
+            mask_image = self.create_mask_image(image_fns)
+            previous_image = self._imread(image_fns[0])[0] - mask_image
+        else:
+            previous_image = self._imread(image_fns[0])[0]
 
         X = [[] for roi in ROIs]
         Y = [[] for roi in ROIs]
@@ -202,7 +202,8 @@ class Movemeter:
 
             for image in self._imread(fn):
 
-                image = image - mask_image
+                if self.subtract_previous:
+                    image = image - mask_image
                 
                 for i_roi, ROI in enumerate(ROIs):
                     
@@ -218,8 +219,9 @@ class Movemeter:
                         
                     X[i_roi].append(x)
                     Y[i_roi].append(y)
-
-                previous_image = image
+                
+                if not self.compare_to_first:
+                    previous_image = image
             
         for x,y in zip(X,Y):
         
@@ -256,7 +258,7 @@ class Movemeter:
         N_stacked = 0
  
         if self.subtract_previous:
-            mask_image = create_mask_image(image_fns)
+            mask_image = self.create_mask_image(image_fns)
 
 
         for i_roi, ROI in enumerate(ROIs):
@@ -272,7 +274,7 @@ class Movemeter:
             for fn in image_fns[0:]:
                 
                 images = self._imread(fn)
-                N_stacked += images.shape[0] - 1
+                N_stacked += len(images) - 1
                   
                 for image in images:
 
