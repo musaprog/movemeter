@@ -3,6 +3,7 @@ A tkinter GUI for Movemeter.
 '''
 
 import os
+import csv
 import json
 import datetime
 import zipfile
@@ -475,21 +476,8 @@ class MovemeterTkGui(tk.Frame):
         self.status.update_idletasks()
 
 
-    def export_results(self, batch_name=None):
-
-        savename = self.export_name.get()
-        zipsavename = savename
-
-        save_root = MOVEDIR
-        if batch_name is not None:
-            save_root = os.path.join(save_root, 'batch', batch_name)
+    def _save_movzip(self, fn):
         
-            zipsavename = batch_name + '_' + savename
-
-
-        save_directory = os.path.join(save_root, savename)
-        os.makedirs(save_directory, exist_ok=True)
-    
         # Dump GUI settings
         settings = {}
         settings['block_size'] = self.blocksize_slider.get()
@@ -498,10 +486,11 @@ class MovemeterTkGui(tk.Frame):
         settings['upscale'] = self.upscale_slider.get()
         settings['cpu_cores'] = self.cores_slider.get() 
         settings['export_time'] = str(datetime.datetime.now())
+        
         if self.images:
             settings['images_shape'] = self.images[0].shape
 
-        with zipfile.ZipFile(os.path.join(save_directory, 'movemeter_{}.zip'.format(zipsavename)), 'w') as savezip:
+        with zipfile.ZipFile(fn, 'w') as savezip:
 
             with savezip.open('metadata.json', 'w') as fp:
                 fp.write(json.dumps(settings).encode('utf-8'))
@@ -509,7 +498,7 @@ class MovemeterTkGui(tk.Frame):
             # Dump exact used filenames
             self.set_status('Saving used image filenames')
             with savezip.open('image_filenames.json', 'w') as fp:
-                fp.write(json.dumps([fn for fn in self.image_fns if fn not in self.exclude_images]).encode('utf-8'))
+                fp.write(json.dumps(self._included_image_fns()).encode('utf-8'))
 
             # Dump ROIs
             self.set_status('Saving ROIs')
@@ -521,16 +510,65 @@ class MovemeterTkGui(tk.Frame):
             with savezip.open('movements.json', 'w') as fp:
                 fp.write(json.dumps(self.results).encode('utf-8'))
 
+    def _load_movzip(self, fn):
+
+        with zipfile.ZipFile(fn, 'r') as loadzip:
+
+            # Dump exact used filenames
+            with loadzip.open('image_filenames.json', 'r') as fp:
+                filenames = json.loads(fp.read())
+
+            # Dump ROIs
+            with loadzip.open('rois.json', 'r') as fp:
+                rois = json.loads(fp.read())
+
+        return [], filenames, rois, []
+
+
+    def export_results(self, batch_name=None):
+
+        savename = self.export_name.get()
+        zipsavename = savename
+
+        save_root = MOVEDIR
+        if batch_name is not None:
+            save_root = os.path.join(save_root, 'batch', batch_name)
         
+        save_directory = os.path.join(save_root, savename)
+        os.makedirs(save_directory, exist_ok=True)
+    
+        self._save_movzip(os.path.join(save_directory, 'movemeter_{}.zip'.format(zipsavename)))
+
+        with open(os.path.join(save_directory, 'movements_{}.csv'.format(zipsavename)), 'w') as fp:
+            writer = csv.writer(fp, delimiter=',')
+            
+            displacements = self.get_displacements(self.results)
+            
+            writer.writerow(['time (s)', 'mean displacement (pixels)'] + ['ROI{} displacement (pixels)'.format(k) for k in range(len(displacements))])
+
+            for i in range(len(displacements[0])):
+                row = [displacements[j][i] for j in range(len(displacements))]
+                row.insert(0, np.mean(row))
+                row.insert(0, i/self.fs)
+                writer.writerow(row)
+
+        
+        slider_i = int(self.image_slider.get())
+        self.image_slider.set(int(len(self._included_image_fns()))/2)
+        #change_image(slider_value=int(len(self._included_image_fns())/2))
+
         # Image of the ROIs
         self.set_status('Saving the image view')
         fig, ax = self.images_plotter.get_figax()
-        fig.savefig(os.path.join(save_directory, 'image_view.jpg'), dpi=600, optimize=True)
-
+        fig.savefig(os.path.join(save_directory, 'movemeter_imageview.jpg'), dpi=400, pil_kwargs={'optimize': True})
+        
+        self.image_slider.set(slider_i)
+        #change_image(slider_value=int(len(self._included_image_fns())/2))
+        
         # Image of the result traces
         self.set_status('Saving the results view')
         fig, ax = self.results_plotter.get_figax()
-        fig.savefig(os.path.join(save_directory, 'results_view.jpg'), dpi=600, optimize=True)
+        fig.savefig(os.path.join(save_directory, 'movemeter_resultsview.jpg'), dpi=400, pil_kwargs={'optimize': True})
 
         # Image of the result traces
         #fig, ax = self.heatmap_plotter.get_figax()
@@ -541,19 +579,19 @@ class MovemeterTkGui(tk.Frame):
         
         self.set_status('Saving heatmaps from matplotlib')
         heatmaps = [self.change_heatmap(i+1, only_return_image=True) for i in range(len(self.heatmap_images))]
-
+        
         # Save heatmap images
         #subsavedir = os.path.join(save_directory, 'heatmap_npy')
         #os.makedirs(subsavedir, exist_ok=True)
         #for fn, image in zip(self.image_fns, self.heatmap_images):
         #    np.save(os.path.join(subsavedir, 'heatmap_{}.npy'.format(os.path.basename(fn))), image)
 
-        subsavedir = os.path.join(save_directory, 'heatmap_matplotlib')
-        os.makedirs(subsavedir, exist_ok=True)
-        for fn, image in zip(self.image_fns, heatmaps):
-            self.heatmap_plotter.imshow(image, normalize=False)
-            fig, ax = self.heatmap_plotter.get_figax()
-            fig.savefig(os.path.join(subsavedir, 'heatmap_{}.jpg'.format(os.path.basename(fn))), dpi=600, optimize=True)
+        #subsavedir = os.path.join(save_directory, 'heatmap_matplotlib')
+        #os.makedirs(subsavedir, exist_ok=True)
+        #for fn, image in zip(self.image_fns, heatmaps):
+        #    self.heatmap_plotter.imshow(image, normalize=False)
+        #    fig, ax = self.heatmap_plotter.get_figax()
+        #    fig.savefig(os.path.join(subsavedir, 'heatmap_{}.jpg'.format(os.path.basename(fn))), dpi=300, optimize=True)
 
         
         self.set_status('DONE Saving :)')
