@@ -12,11 +12,11 @@ import inspect
 import numpy as np
 import tifffile
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, simpledialog
 import matplotlib.patches
 from PIL import Image
 
-from tk_steroids.elements import Listbox, Tabs, TickboxFrame
+from tk_steroids.elements import Listbox, Tabs, TickboxFrame, ButtonsFrame
 from tk_steroids.matplotlib import CanvasPlotter
 
 from movemeter import __version__
@@ -28,6 +28,10 @@ from movemeter import Movemeter
 class MovemeterTkGui(tk.Frame):
     '''
     Class documentation TODO.
+    
+    
+    exclude_images : list of integers and/or strings
+        Images to skip by file name or by index
     '''
 
     def __init__(self, tk_parent):
@@ -49,6 +53,7 @@ class MovemeterTkGui(tk.Frame):
         self.heatmap_images = []
         
         self.movemeter = None
+        self.fs = 100
 
         # Top menu
         # --------------------------------
@@ -56,6 +61,7 @@ class MovemeterTkGui(tk.Frame):
         
         filemenu = tk.Menu(self)
         filemenu.add_command(label='Open directory', command=self.open_directory)
+        filemenu.add_command(label='Reprocess old', command=self.recalculate_old)
         self.menu.add_cascade(label='File', menu=filemenu)
         
 
@@ -72,14 +78,12 @@ class MovemeterTkGui(tk.Frame):
         self.folders_listbox.listbox.config(height=10)
         self.folders_listbox.grid(row=2, column=1, columnspan=2, sticky='NSWE')
 
-        self.add_folder_button = tk.Button(self.folview, text='Add..',
-                command=self.open_directory)
-        self.add_folder_button.grid(row=1, column=1)
-
-        self.remove_folder_button = tk.Button(self.folview, text='Remove',
-                command=self.remove_directory)
-        self.remove_folder_button.grid(row=1, column=2)
-
+        self.imview_buttons = ButtonsFrame(self.folview,
+                ['Add...', 'Remove', 'FS'],
+                [self.open_directory, self.remove_directory, self.set_fs])
+        self.imview_buttons.grid(row=0, column=1) 
+        self.fs_button = self.imview_buttons.buttons[2]
+        self.set_fs(fs=self.fs)
 
         # Operations view
         # -------------------------
@@ -91,7 +95,7 @@ class MovemeterTkGui(tk.Frame):
         self.roiview.grid(row=2, column=1, columnspan=2, sticky='NSWE')
         
         tk.Label(self.roiview, text='Block size').grid(row=1, column=1)
-        self.blocksize_slider = tk.Scale(self.roiview, from_=16, to=512,
+        self.blocksize_slider = tk.Scale(self.roiview, from_=16, to=128,
                 orient=tk.HORIZONTAL)
         self.blocksize_slider.set(32)
         self.blocksize_slider.grid(row=1, column=2, sticky='NSWE')
@@ -174,23 +178,26 @@ class MovemeterTkGui(tk.Frame):
         self.export_name.grid(row=4, column=2)
         
 
-        #self.batch_button = tk.Button(self.opview, text='Batch measure&save all',
-        #        command=self.batch_process)
-        #self.batch_button.grid(row=5, column=1)
+        self.batch_button = tk.Button(self.opview, text='Batch measure&save all',
+                command=self.batch_process)
+        self.batch_button.grid(row=5, column=1)
                 
-        #self.batch_name = tk.Entry(self.opview, width=50)
-        #self.batch_name.insert(0, "batch_name")
-        #self.batch_name.grid(row=5, column=2)
+        self.batch_name = tk.Entry(self.opview, width=50)
+        self.batch_name.insert(0, "batch_name")
+        self.batch_name.grid(row=5, column=2)
  
 
         # Images view: Image looking and ROI selection
         # -------------------------------------------------
         self.imview = tk.LabelFrame(self, text='Images and ROI')
         self.imview.grid(row=1, column=1)
+
+        self.imview_buttons = ButtonsFrame(self.imview,
+                ['Exclude image', 'Exclude index'],
+                [self.toggle_exclude, lambda: self.toggle_exclude(by_index=True)])
         
-        self.toggle_exclude_button = tk.Button(self.imview, text='Exclude',
-                command=self.toggle_exclude)
-        self.toggle_exclude_button.grid(row=1, column=1)
+        self.imview_buttons.grid(row=1, column=1)
+
 
         self.image_slider = tk.Scale(self.imview, from_=0, to=0,
                 orient=tk.HORIZONTAL, command=self.change_image)
@@ -199,6 +206,11 @@ class MovemeterTkGui(tk.Frame):
 
         self.images_plotter = CanvasPlotter(self.imview)
         self.images_plotter.grid(row=3, column=1) 
+        
+        ax = self.images_plotter.ax
+        self.excludetext = ax.text(0.5, 0.5, '', transform=ax.transAxes,
+                fontsize=24, ha='center', va='center', color='red')
+
 
 
         # Results view: Analysed traces
@@ -242,6 +254,15 @@ class MovemeterTkGui(tk.Frame):
         self.exit=True
         if self.movemeter:
             self.movemeter.stop()
+
+    def set_fs(self, fs=None):
+
+        if fs is None:
+            fs = simpledialog.askfloat('Imaging frequency (Hz)', 'How many images were taken per second')
+
+        if fs:
+            self.fs = fs
+            self.fs_button.configure(text='fs = {} Hz'.format(self.fs))
 
 
     def open_directory(self, directory=None):
@@ -301,19 +322,64 @@ class MovemeterTkGui(tk.Frame):
         self.export_name.insert(0, os.path.basename(folder.rstrip('/')))
 
 
-    def toggle_exclude(self):
-        fn = self.image_fns[int(self.image_slider.get())-1]
+    def toggle_exclude(self, by_index=False):
+        '''
+        by_index  If true, toggle exclude for all images with this index
+        '''
+
+        indx = int(self.image_slider.get()) - 1
+        if by_index:
+            fn = indx
+        else:
+            fn = self.image_fns[indx]
+
         if fn not in self.exclude_images:
             self.exclude_images.append(fn)
             self.set_status('Removed image {} from the analysis'.format(fn))
         else:
-            self.exclude_images.remove(fn)
-        
+            self.exclude_images.remove(fn) 
             self.set_status('Added image {} back to the analysis'.format(fn))
+        
         self.mask_image = None
         self.change_image(slider_value=self.image_slider.get())
-        #print(self.exclude_images)
+        print(self.exclude_images)
         
+    
+    def recalculate_old(self, directory=None):
+        '''
+        Using the current settings, recalculate old data by opening the
+        zip file and reading image filenames and ROI limits from there.
+        '''
+
+        if directory == None:
+            directory = filedialog.askdirectory()
+            if not directory:
+                return None
+        
+        self.exit = False
+        for root, dirs, fns in os.walk(directory):
+            
+            if self.exit:
+                break
+
+            movzip = [fn for fn in os.listdir(root) if fn.startswith('movemeter') and fn.endswith('.zip')]
+            
+            if movzip:
+                settings, filenames, rois, movements = self._load_movzip(os.path.join(root, movzip[0]))
+                
+                x1, y1 = np.min(rois, axis=0)[0:2]
+                x2, y2 = np.max(rois, axis=0)[0:2] + rois[0][3]
+                self.set_roi(x1,y1,x2,y2)
+
+                self.folder_selected(os.path.dirname(filenames[0]))
+                self.measure_movement()
+
+                self.export_results(batch_name=self.batch_name.get())
+                
+                print(filenames)
+                print(rois)
+
+
 
     def batch_process(self):
         self.exit = False
@@ -337,12 +403,12 @@ class MovemeterTkGui(tk.Frame):
                     multiprocess=cores, print_callback=self.set_status,
                     **self.movemeter_tickboxes.states)
            
-
-            self.movemeter.subtract_previous = True
-            self.movemeter.compare_to_first = False
-
-            self.movemeter.set_data([[fn for fn in self.image_fns if fn not in self.exclude_images]], [self.rois])
-            self.results = self.movemeter.measure_movement(0, max_movement=int(self.maxmovement_slider.get()))
+            # Set movemeted data
+            images = [self._included_image_fns()]
+            print(len(images[0]))
+            self.movemeter.set_data(images, [self.rois])
+            
+            self.results = self.movemeter.measure_movement(0, max_movement=int(self.maxmovement_slider.get()), optimized=True)
             self.plot_results()
 
             self.calculate_heatmap()
@@ -394,7 +460,8 @@ class MovemeterTkGui(tk.Frame):
     def change_image(self, slider_value=None):
         
         image_i = int(slider_value) -1
-       
+        print(slider_value)
+
         if not 0 <= image_i < len(self.image_fns):
             return None
 
@@ -411,22 +478,33 @@ class MovemeterTkGui(tk.Frame):
         if self.images[image_i] is None:
             self.images[image_i] = tifffile.imread(self.image_fns[image_i])
         
+        
+        if image_i in self.exclude_images or self.image_fns[image_i] in self.exclude_images:
+            self.excludetext.set_text('EXCLUDED')
+        else: 
+            self.excludetext.set_text('')
 
         self.images_plotter.imshow(self.images[image_i]-self.mask_image, roi_callback=self.set_roi, cmap='gray')
-        self.images_plotter.update()
-   
+        #self.images_plotter.update()
+
+    @staticmethod
+    def get_displacements(results):
+        return [np.sqrt(np.array(x)**2+np.array(y)**2) for x,y in results]
 
     def plot_results(self):
         self.results_plotter.ax.clear()
         for x,y in self.results[:50]:
             self.results_plotter.plot(np.sqrt(np.array(x)**2+np.array(y)**2), ax_clear=False, color='red')
 
+    def _included_image_fns(self):
+        return [fn for i_fn, fn in enumerate(self.image_fns) if fn not in self.exclude_images and i_fn not in self.exclude_images]
+    
 
     def calculate_heatmap(self):
 
         self.heatmap_images = []
         
-        for i_frame in range(len([fn for fn in self.image_fns if fn not in self.exclude_images])):
+        for i_frame in range(len(self._included_image_fns())):
             if i_frame == 0:
                 continue
             image = np.zeros(self.images[0].shape)
