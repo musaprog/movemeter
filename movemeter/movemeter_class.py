@@ -148,11 +148,13 @@ class Movemeter:
        
         # Normalize values to interval 0...1000
         # FIXME Is the range 0...1000 optimal?
-        image -= np.min(image)
-        image = (image / np.max(image)) * 1000
 
+        for i in range(len(image)):
+            image[i] -= np.min(image[i])
+            image[i] = (image[i] / np.max(image[i])) * 1000
+            image[i] = image[i].astype(np.float32)
 
-        return image.astype(np.float32)
+        return image
 
     
     def create_mask_image(image_fns):
