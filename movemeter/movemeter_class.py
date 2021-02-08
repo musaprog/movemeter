@@ -355,7 +355,7 @@ class Movemeter:
 
 
 
-    def measure_movement(self, stack_i, max_movement=False):
+    def measure_movement(self, stack_i, max_movement=False, optimized=False):
         ''' Run the translational movement analysis.
 
         Image stacks and ROIs are expected to be set before using set_data method.
@@ -372,6 +372,8 @@ class Movemeter:
         max_movement : int
             Speed up the computation by specifying the maximum translation between
             subsequent frames, in pixels.
+        optimized : bool
+            Experimental, if true use reversed roi/image looping order.
 
         Returns
         -------
@@ -383,6 +385,13 @@ class Movemeter:
 
         start_time = time.time()
         self.print_callback('Starting to analyse stack {}/{}'.format(stack_i+1, len(self.stacks)))
+        
+        # Select target _measure_movement
+        if optimized:
+            self.print_callback('Targeting to the optimized version')
+            target = self._measure_movement_optimized_xray_data
+        else:
+            target = self._measure_movement
 
         if self.multiprocess:
             
@@ -394,13 +403,7 @@ class Movemeter:
             for i in range(self.multiprocess):
                 results_list.append([])
             
-            # Select target _measure_movement
-            if self.subtract_previous == True and self.compare_to_first == False:
-                self.print_callback('Targeting to optimized version for xray data')
-                target = self._measure_movement_optimized_xray_data
-            else:
-                target = self._measure_movement
-    
+   
             # Create and start workers
             workers = []
             work_chunk = int(len(self.ROIs[stack_i]) / self.multiprocess)
@@ -435,11 +438,7 @@ class Movemeter:
                 results.extend(worker_results)
 
         else:
-            # No multiprocessing
-            if self.subtract_previous == True and self.compare_to_first == False:
-                results = self._measure_movement_optimized_xray_data(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement)
-            else:
-                results = self._measure_movement(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement)
+            results = target(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement)
         
 
         self.print_callback('Finished stack {}/{} in {} secods'.format(stack_i+1, len(self.stacks), time.time()-start_time))
