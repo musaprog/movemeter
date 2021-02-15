@@ -100,10 +100,10 @@ class MovemeterTkGui(tk.Frame):
         self.blocksize_slider.set(32)
         self.blocksize_slider.grid(row=1, column=2, sticky='NSWE')
 
-        tk.Label(self.roiview, text='Relative distance').grid(row=2, column=1)
-        self.overlap_slider = tk.Scale(self.roiview, from_=0.1, to=2,
-                orient=tk.HORIZONTAL, resolution=0.1)
-        self.overlap_slider.set(1)
+        tk.Label(self.roiview, text='Block distance').grid(row=2, column=1)
+        self.overlap_slider = tk.Scale(self.roiview, from_=1, to=128,
+                orient=tk.HORIZONTAL, resolution=1)
+        self.overlap_slider.set(32)
         self.overlap_slider.grid(row=2, column=2, sticky='NSWE')
         
         self.update_grid_button = tk.Button(self.roiview, text='Update grid',
@@ -431,7 +431,7 @@ class MovemeterTkGui(tk.Frame):
         h = y2-y1
         block_size = self.blocksize_slider.get()
         block_size = (block_size, block_size)
-        self.rois = gen_grid((x1,y1,w,h), block_size, step=float(self.overlap_slider.get()))
+        self.rois = gen_grid((x1,y1,w,h), block_size, step=float(self.overlap_slider.get())/block_size[0])
         
         if len(self.rois) < 3000:
             self.set_status('Plotting all ROIs...')
@@ -512,7 +512,7 @@ class MovemeterTkGui(tk.Frame):
                 values = (np.sqrt(np.array(x)**2+np.array(y)**2))
                 value = abs(values[i_frame] - values[i_frame-1])
                 xx,yy,w,h = ROI
-                step = float(self.overlap_slider.get())
+                step = float(self.overlap_slider.get()) / w
                 cx = xx+int(round(w/2))
                 cy = yy+int(round(h/2))
                 #image[yy:yy+h, xx:xx+w] = value
