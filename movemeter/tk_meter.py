@@ -559,7 +559,8 @@ class MovemeterTkGui(tk.Frame):
             image = np.zeros(self.image_shape)
             for ROI, (x,y) in zip(self.rois, self.results):
                 values = (np.sqrt(np.array(x)**2+np.array(y)**2))
-                value = abs(values[i_frame] - values[i_frame-1])
+                value = values[i_frame]
+                #value = abs(values[i_frame] - values[i_frame-1])
                 xx,yy,w,h = ROI
                 step = float(self.overlap_slider.get()) / w
                 cx = xx+int(round(w/2))
