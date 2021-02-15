@@ -433,10 +433,10 @@ class MovemeterTkGui(tk.Frame):
         block_size = (block_size, block_size)
         self.rois = gen_grid((x1,y1,w,h), block_size, step=float(self.overlap_slider.get()))
         
-        if len(self.rois) < 10000:
+        if len(self.rois) < 3000:
             self.set_status('Plotting all ROIs...')
         else:
-            self.set_status('Too many ROIs, plotting only 10 000 first...')
+            self.set_status('Too many ROIs, plotting only 3 000 first...')
         
         fig, ax = self.images_plotter.get_figax()
         
@@ -445,7 +445,7 @@ class MovemeterTkGui(tk.Frame):
             patch.remove()
         self.roi_patches = []
 
-        for roi in self.rois[:10000]:
+        for roi in self.rois[:3000]:
             patch = matplotlib.patches.Rectangle((float(roi[0]), float(roi[1])),
                     float(roi[2]), float(roi[3]), fill=True, color='red',
                     alpha=0.2)
