@@ -65,6 +65,7 @@ class MovemeterTkGui(tk.Frame):
         filemenu = tk.Menu(self)
         filemenu.add_command(label='Open directory', command=self.open_directory)
         filemenu.add_command(label='Reprocess old', command=self.recalculate_old)
+        filemenu.add_command(label='Replot heatmap', command=self.replot_heatmap)
         self.menu.add_cascade(label='File', menu=filemenu)
         
         viewmenu = tk.Menu(self)
@@ -406,6 +407,37 @@ class MovemeterTkGui(tk.Frame):
                 self.export_results(batch_name=self.batch_name.get())
 
         self.set_status('Results recalculated :)')
+
+
+    def replot_heatmap(self, directory=None):
+        '''
+        Like recalculate old, but relies in the old movement analysis results
+        '''
+        if directory == None:
+            directory = filedialog.askdirectory()
+            if not directory:
+                return None
+        
+        self.exit = False
+        for root, dirs, fns in os.walk(directory):
+            
+            if self.exit:
+                break
+
+            movzip = [fn for fn in os.listdir(root) if fn.startswith('movemeter') and fn.endswith('.zip')]
+            if movzip:
+                settings, filenames, self.rois, self.results = self._load_movzip(os.path.join(root, movzip[0])) 
+                
+                self.folder_selected(os.path.dirname(filenames[0]))
+                self.set_settings(settings)
+
+                self.plot_results()
+                self.calculate_heatmap()
+                self.change_heatmap(1)
+
+                self.export_results(batch_name=self.batch_name.get())
+
+        self.set_status('Heatmaps replotted :)')
 
 
     def batch_process(self):
