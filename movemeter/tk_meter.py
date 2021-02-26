@@ -397,11 +397,12 @@ class MovemeterTkGui(tk.Frame):
             if movzip:
                 settings, filenames, rois, movements = self._load_movzip(os.path.join(root, movzip[0]))
                 
+                self.folder_selected(os.path.dirname(filenames[0]))
+                
                 x1, y1 = np.min(rois, axis=0)[0:2]
                 x2, y2 = np.max(rois, axis=0)[0:2] + rois[0][3]
                 self.set_roi(x1,y1,x2,y2)
 
-                self.folder_selected(os.path.dirname(filenames[0]))
                 self.measure_movement()
 
                 self.export_results(batch_name=self.batch_name.get())
