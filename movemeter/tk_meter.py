@@ -573,6 +573,14 @@ class MovemeterTkGui(tk.Frame):
     def get_displacements(results):
         return [np.sqrt(np.array(x)**2+np.array(y)**2) for x,y in results]
 
+
+    @staticmethod
+    def get_destructive_displacement_mean(results):
+        x = [x for x,y in results]
+        y = [y for x,y in results]
+        return np.sqrt(np.mean(x, axis=0)**2 + np.mean(y, axis=0)**2)
+
+
     def plot_results(self):
         self.results_plotter.ax.clear()
         for x,y in self.results[:50]:
@@ -746,15 +754,17 @@ class MovemeterTkGui(tk.Frame):
             writer = csv.writer(fp, delimiter=',')
             
             displacements = self.get_displacements(self.results)
-            
-            writer.writerow(['time (s)', 'mean displacement (pixels)'] + ['ROI{} displacement (pixels)'.format(k) for k in range(len(displacements))])
+            dm_displacement = self.get_destructive_displacement_mean(self.results)
+
+            writer.writerow(['time (s)', 'mean displacement (pixels)', 'destructive mean displacement (pixels)'] + ['ROI{} displacement (pixels)'.format(k) for k in range(len(displacements))])
 
             for i in range(len(displacements[0])):
                 row = [displacements[j][i] for j in range(len(displacements))]
+                row.insert(0, dm_displacement[i])
                 row.insert(0, np.mean(row))
                 row.insert(0, i/self.fs)
                 writer.writerow(row)
-
+        
         
         slider_i = int(self.image_slider.get())
         self.image_slider.set(int(len(self._included_image_fns()))/2)
