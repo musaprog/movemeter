@@ -645,6 +645,23 @@ class MovemeterTkGui(tk.Frame):
             return image
         else:
             self.heatmap_plotter.imshow(image, normalize=False)
+    
+    def set_settings(self, settings):
+        for key, value in settings.items():
+            if key == 'block_size':
+                self.blocksize_slider.set(value)
+            elif key == 'block_distance':
+                self.overlap_slider.set(value)
+            elif key == 'maximum_movement':
+                self.maxmovement_slider.set(value)
+            elif key == 'upscale':
+                self.upscale_slider.set(value)
+            elif key == 'cpu_cores':
+                self.cores_slider.set(value)
+            elif key == 'exclude_images':
+                self.exclude_images = value
+            elif key == 'measurement_parameters':
+                self.movemeter_tickboxes.states = value
 
 
     def set_status(self, text):
@@ -664,6 +681,7 @@ class MovemeterTkGui(tk.Frame):
         settings['export_time'] = str(datetime.datetime.now())
         settings['movemeter_version'] = __version__
         settings['exclude_images'] = self.exclude_images
+        settings['measurement_parameters'] = self.movemeter_tickboxes.states
 
         if self.images:
             settings['images_shape'] = self.image_shape
