@@ -550,24 +550,40 @@ class MovemeterTkGui(tk.Frame):
     
 
     def calculate_heatmap(self):
-
+        '''
+        Produce minimum size heatmap.
+        '''
         self.heatmap_images = []
         
-        for i_frame in range(len(self._included_image_fns())):
-            if i_frame == 0:
-                continue
-            image = np.zeros(self.image_shape)
+        roi_w, roi_h = self.rois[0][2:]
+
+        roi_max_x = np.max([z[0] for z in self.rois])
+        roi_min_x = np.min([z[0] for z in self.rois])
+        roi_max_y = np.max([z[1] for z in self.rois])
+        roi_min_y = np.min([z[1] for z in self.rois])
+        
+
+        step = int(self.overlap_slider.get())
+        
+        max_movement = float(self.maxmovement_slider.get())
+        N = len(self._included_image_fns())
+
+        for i_frame in range(N):
+            image = np.zeros( (int((roi_max_y-roi_min_y)/step)+1, int((roi_max_x-roi_min_x)/step)+1) )
             for ROI, (x,y) in zip(self.rois, self.results):
                 values = (np.sqrt(np.array(x)**2+np.array(y)**2))
+                
                 value = values[i_frame]
-                #value = abs(values[i_frame] - values[i_frame-1])
-                xx,yy,w,h = ROI
-                step = float(self.overlap_slider.get()) / w
-                cx = xx+int(round(w/2))
-                cy = yy+int(round(h/2))
-                #image[yy:yy+h, xx:xx+w] = value
-                image[cy-int(step*(h/2)):cy+int(round(step*(h/2))), cx-int(round(step*(w/2))):cx+int(round(step*(w/2)))] = value
-            
+               
+                cx = int((ROI[0]-roi_min_x)/step)
+                cy = int((ROI[1]-roi_min_y)/step)
+                
+                try:
+                    image[cy, cx] = value
+                except:
+                    print(image.shape)
+                    print('cx {} cy {}'.format(cx, cy))
+                    raise ValueError
             if np.max(image) < 0.01:
                 image[0,0] = 1
             self.heatmap_images.append(image)
