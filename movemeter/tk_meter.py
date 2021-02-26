@@ -13,7 +13,9 @@ import numpy as np
 import tifffile
 import tkinter as tk
 from tkinter import filedialog, simpledialog
+import matplotlib.pyplot as plt
 import matplotlib.patches
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from PIL import Image
 
 from tk_steroids.elements import Listbox, Tabs, TickboxFrame, ButtonsFrame
@@ -786,40 +788,49 @@ class MovemeterTkGui(tk.Frame):
         # Image of the result traces
         #fig, ax = self.heatmap_plotter.get_figax()
         #fig.savefig(os.path.join(save_directory, 'heatmap_view.jpg'), dpi=600, optimize=True)
-
-        maxval = np.max(self.heatmap_images)
-        heatmaps = [np.copy(image)/maxval for image in self.heatmap_images]
         
-        #self.set_status('Saving heatmaps from matplotlib')
-        #heatmaps = [self.change_heatmap(i+1, only_return_image=True) for i in range(len(self.heatmap_images))]
         
-        # Save heatmap images
-        #subsavedir = os.path.join(save_directory, 'heatmap_npy')
-        #os.makedirs(subsavedir, exist_ok=True)
-        #for fn, image in zip(self.image_fns, self.heatmap_images):
-        #    np.save(os.path.join(subsavedir, 'heatmap_{}.npy'.format(os.path.basename(fn))), image)
+        def save_heatmaps(heatmaps, image_fns, savedir):
+            
+            for fn, image in zip(image_fns, heatmaps):
+                tifffile.imsave(os.path.join(savedir, 'ht_{}'.format(os.path.basename(fn))), image.astype('float32'))
+            
+            # Save mean heatmap image with scale bar using matplotlib
+            # FIXME Expose option for how many last images to save the mean for
+            meanimage = np.mean(heatmaps[-min(5, len(heatmaps)):], axis=0)
+            
+            if False:
+                # This was used to clip heatmap values
+                # FIXME Expose option in the GUI
+                if 'musca' in save_directory:
+                    meanimage = np.clip(meanimage, 0, 50)
+                    if np.max(meanimage) < 50:
+                        meanimage[0,0] = 50
+                else:
+                    meanimage = np.clip(meanimage, 0, 6)
+                    if np.max(meanimage) < 6:
+                        meanimage[0,0] = 6
 
-        #subsavedir = os.path.join(save_directory, 'heatmap_matplotlib')
-        #os.makedirs(subsavedir, exist_ok=True)
-        #for fn, image in zip(self.image_fns, heatmaps):
-        #    self.heatmap_plotter.imshow(image, normalize=False)
-        #    fig, ax = self.heatmap_plotter.get_figax()
-        #    fig.savefig(os.path.join(subsavedir, 'heatmap_{}.jpg'.format(os.path.basename(fn))), dpi=300, optimize=True)
+            fig, ax = plt.subplots()
+            imshow = ax.imshow(meanimage)
+            ax.set_axis_off()
 
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes('right', size='5%', pad=0.05)
+            fig.colorbar(imshow, cax=cax)
+            
+            fig.savefig(os.path.join(savedir, 'ht_mean.png'), dpi=800)
+            
+            plt.show(block=False)
+            plt.pause(0.01)
+            plt.close(fig)
         
-        self.set_status('Saving heatmaps using tifffile')
-
-        # Save heatmap images
+        self.set_status('Saving heatmaps')
         subsavedir = os.path.join(save_directory, 'heatmap_tif')
         os.makedirs(subsavedir, exist_ok=True)
-       
-        for fn, image in zip(self.image_fns, heatmaps):
-            tifffile.imsave(os.path.join(subsavedir, 'ht_{}'.format(os.path.basename(fn))), image.astype('float32'))
-
-        #    pimage = Image.fromarray(image)
-        #    pimage.save(os.path.join(subsavedir, 'heatmap_{}.png'.format(os.path.basename(fn))))
-
-            
+         
+        save_heatmaps(self.heatmap_images, self.image_fns, subsavedir)
+        
         self.set_status('DONE Saving :)')
           
 
