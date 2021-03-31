@@ -23,7 +23,7 @@ from tk_steroids.matplotlib import CanvasPlotter
 
 from movemeter import __version__
 from movemeter.directories import MOVEDIR
-from movemeter import gen_grid
+from movemeter.roi import gen_grid, grid_along_line
 from movemeter import Movemeter
 
 
@@ -108,27 +108,41 @@ class MovemeterTkGui(tk.Frame):
         self.roiview = tk.LabelFrame(self.opview, text='Gird creation options (in pixels)')
         self.roiview.columnconfigure(2, weight=1)
         self.roiview.grid(row=2, column=1, columnspan=2, sticky='NSWE')
-        
-        tk.Label(self.roiview, text='Block size').grid(row=1, column=1)
+
+        tk.Label(self.roiview, text='Selection type').grid(row=1, column=1)
+        self.roitype_selection = TickboxFrame(self.roiview, ['box', 'line'], ['Box', 'Line'],
+                single_select=True, callback=self.update_grid)
+        self.roitype_selection.grid(row=1, column=2)
+
+
+        tk.Label(self.roiview, text='Block size').grid(row=2, column=1)
         self.blocksize_slider = tk.Scale(self.roiview, from_=16, to=128,
                 orient=tk.HORIZONTAL)
         self.blocksize_slider.set(32)
-        self.blocksize_slider.grid(row=1, column=2, sticky='NSWE')
+        self.blocksize_slider.grid(row=2, column=2, sticky='NSWE')
 
-        tk.Label(self.roiview, text='Block distance').grid(row=2, column=1)
+        tk.Label(self.roiview, text='Block distance').grid(row=3, column=1)
         self.overlap_slider = tk.Scale(self.roiview, from_=1, to=128,
                 orient=tk.HORIZONTAL, resolution=1)
         self.overlap_slider.set(32)
-        self.overlap_slider.grid(row=2, column=2, sticky='NSWE')
+        self.overlap_slider.grid(row=3, column=2, sticky='NSWE')
         
+        self.distance_label = tk.Label(self.roiview, text='Line-block distance')
+        self.distance_label.grid(row=4, column=1)
+        self.distance_slider = tk.Scale(self.roiview, from_=1, to=128,
+                orient=tk.HORIZONTAL, resolution=1)
+        self.distance_slider.set(32)
+        self.distance_slider.grid(row=4, column=2, sticky='NSWE')
+ 
+
         self.update_grid_button = tk.Button(self.roiview, text='Update grid',
                 command=self.update_grid)
-        self.update_grid_button.grid(row=3, column=1)
+        self.update_grid_button.grid(row=5, column=1)
 
         self.fill_grid_button = tk.Button(self.roiview, text='Create maxgrid',
                 command=self.fill_grid)
-        self.fill_grid_button.grid(row=3, column=2)
-
+        self.fill_grid_button.grid(row=5, column=2)
+        
 
 
         self.parview = tk.LabelFrame(self.opview, text='Measurement parameters')
@@ -492,7 +506,12 @@ class MovemeterTkGui(tk.Frame):
             self.images[image_i] = tifffile.imread(self.image_fns[image_i])
         return self.images[image_i].shape
 
-    def update_grid(self):
+    def update_grid(self, *args):
+
+        # Updating the image also needed now to update the selector
+        # type drawn while selecting (box or line)
+        self.change_image()
+        
         self.set_roi(*self.selection)
 
     def fill_grid(self): 
@@ -506,8 +525,16 @@ class MovemeterTkGui(tk.Frame):
         h = y2-y1
         block_size = self.blocksize_slider.get()
         block_size = (block_size, block_size)
-        self.rois = gen_grid((x1,y1,w,h), block_size, step=float(self.overlap_slider.get())/block_size[0])
+        distance = self.distance_slider.get()
+        rel_step = float(self.overlap_slider.get())/block_size[0]
+    
+
+        if self.roitype_selection.states['line']:
+            self.rois = grid_along_line((x1, y1), (x2, y2), distance, block_size, step=rel_step)
+        else:
+            self.rois = gen_grid((x1,y1,w,h), block_size, step=rel_step)
         
+
         if len(self.rois) < 3000:
             self.set_status('Plotting all ROIs...')
         else:
@@ -568,7 +595,8 @@ class MovemeterTkGui(tk.Frame):
             showimage = self.images[image_i]
 
         self.images_plotter.imshow(showimage, roi_callback=self.set_roi,
-                cmap='gray', slider=self.show_controls)
+                cmap='gray', slider=self.show_controls,
+                roi_drawtype=[s for s, b in self.roitype_selection.states.items() if b][0])
         #self.images_plotter.update()
 
     @staticmethod
