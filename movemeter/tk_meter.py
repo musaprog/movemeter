@@ -82,6 +82,9 @@ class MovemeterTkGui(tk.Frame):
 
         self.parent.config(menu=self.menu)
 
+        
+
+
         # Input folders
 
         self.folview = tk.LabelFrame(self, text='Input folders')
@@ -105,9 +108,12 @@ class MovemeterTkGui(tk.Frame):
         self.opview = tk.LabelFrame(self, text='Command center')
         self.opview.grid(row=0, column=2, sticky='NSWE')
         
-        self.roiview = tk.LabelFrame(self.opview, text='Gird creation options (in pixels)')
+        self.tabs = Tabs(self.opview, ['Grid creation options', 'Measurement parameters'],
+                draw_frame = True)
+        self.tabs.grid(row=0, column=1, columnspan=2, sticky='NSWE')
+
+        self.roiview = self.tabs.tabs[0]
         self.roiview.columnconfigure(2, weight=1)
-        self.roiview.grid(row=2, column=1, columnspan=2, sticky='NSWE')
 
         tk.Label(self.roiview, text='Selection type').grid(row=1, column=1)
         self.roitype_selection = TickboxFrame(self.roiview, ['box', 'line'], ['Box', 'Line'],
@@ -141,10 +147,8 @@ class MovemeterTkGui(tk.Frame):
         self.roi_buttons.grid(row=5, column=1, columnspan=2)
 
 
-
-        self.parview = tk.LabelFrame(self.opview, text='Measurement parameters')
+        self.parview = self.tabs.tabs[1]
         self.parview.columnconfigure(2, weight=1)
-        self.parview.grid(row=3, column=1, columnspan=2, sticky='NSWE')
 
 
         # Movemeter True/False options; Automatically inspect from Movemeter.__init__
