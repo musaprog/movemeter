@@ -559,7 +559,7 @@ class MovemeterTkGui(tk.Frame):
         else:
             rois = gen_grid((x1,y1,w,h), block_size, step=rel_step)
         
-        self.rois.append(rois)
+        self.rois.extend(rois)
         
         # Draw ROIs
 
