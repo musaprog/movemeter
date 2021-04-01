@@ -46,7 +46,7 @@ class MovemeterTkGui(tk.Frame):
         self.images = None
         self.exclude_images = []
 
-        self.selection = [0,0,10,10]
+        self.selections = [[0,0,10,10]]
         self.mask_image = None
         self.rois = []
         self.roi_patches = []
@@ -111,7 +111,7 @@ class MovemeterTkGui(tk.Frame):
 
         tk.Label(self.roiview, text='Selection type').grid(row=1, column=1)
         self.roitype_selection = TickboxFrame(self.roiview, ['box', 'line'], ['Box', 'Line'],
-                single_select=True, callback=self.update_grid)
+                single_select=True, callback=self.change_image)
         self.roitype_selection.grid(row=1, column=2)
 
 
@@ -133,16 +133,13 @@ class MovemeterTkGui(tk.Frame):
                 orient=tk.HORIZONTAL, resolution=1)
         self.distance_slider.set(32)
         self.distance_slider.grid(row=4, column=2, sticky='NSWE')
- 
-
-        self.update_grid_button = tk.Button(self.roiview, text='Update grid',
-                command=self.update_grid)
-        self.update_grid_button.grid(row=5, column=1)
-
-        self.fill_grid_button = tk.Button(self.roiview, text='Create maxgrid',
-                command=self.fill_grid)
-        self.fill_grid_button.grid(row=5, column=2)
         
+
+        self.roi_buttons = ButtonsFrame(self.roiview, ['Update', 'Max grid', 'Clear'],
+                [self.update_grid, self.fill_grid, self.clear_selections])
+
+        self.roi_buttons.grid(row=5, column=1, columnspan=2)
+
 
 
         self.parview = tk.LabelFrame(self.opview, text='Measurement parameters')
@@ -506,48 +503,70 @@ class MovemeterTkGui(tk.Frame):
             self.images[image_i] = tifffile.imread(self.image_fns[image_i])
         return self.images[image_i].shape
 
+
+    def clear_selections(self):
+        self.selections = []
+        self.update_grid()
+
     def update_grid(self, *args):
 
         # Updating the image also needed now to update the selector
         # type drawn while selecting (box or line)
         self.change_image()
         
-        self.set_roi(*self.selection)
+        # Clear any previous patches
+        for patch in self.roi_patches:
+            patch.remove()
+        self.roi_patches = []
+
+        self.rois = []
+        
+        if self.selections:
+            for selection in self.selections:
+                self.set_roi(*selection, user_made=False)
+        else:
+            self.images_plotter.update()
+
+
 
     def fill_grid(self): 
-
-       
         self.set_roi(0,0,*reversed(self.image_shape))
-    
-    def set_roi(self, x1,y1,x2,y2):
-        self.selection = (x1, y1, x2, y2)
+   
+
+    def set_roi(self, x1,y1,x2,y2, params=None, user_made=True):
+        
+        if params is None:
+            params = {}
+            params['roitype'] = [s for s, b in self.roitype_selection.states.items() if b][0]
+            params['blocksize'] = 2*[self.blocksize_slider.get()]
+            params['distance'] = self.distance_slider.get()
+            params['relstep'] = float(self.overlap_slider.get())/params['blocksize'][0]
+
         w = x2-x1
         h = y2-y1
-        block_size = self.blocksize_slider.get()
-        block_size = (block_size, block_size)
-        distance = self.distance_slider.get()
-        rel_step = float(self.overlap_slider.get())/block_size[0]
-    
-
-        if self.roitype_selection.states['line']:
-            self.rois = grid_along_line((x1, y1), (x2, y2), distance, block_size, step=rel_step)
-        else:
-            self.rois = gen_grid((x1,y1,w,h), block_size, step=rel_step)
         
+        roitype, block_size, distance, rel_step = [params[key] for key in ['roitype','blocksize','distance','relstep']]
 
-        if len(self.rois) < 3000:
+        if user_made:
+            self.selections.append( (x1, y1, x2, y2, params) )   
+        
+        if roitype == 'line':
+            rois = grid_along_line((x1, y1), (x2, y2), distance, block_size, step=rel_step)
+        else:
+            rois = gen_grid((x1,y1,w,h), block_size, step=rel_step)
+        
+        self.rois.append(rois)
+        
+        # Draw ROIs
+
+        if len(rois) < 3000:
             self.set_status('Plotting all ROIs...')
         else:
             self.set_status('Too many ROIs, plotting only 3 000 first...')
         
         fig, ax = self.images_plotter.get_figax()
         
-        # Clear any previous patches
-        for patch in self.roi_patches:
-            patch.remove()
-        self.roi_patches = []
-
-        for roi in self.rois[:3000]:
+        for roi in rois[:3000]:
             patch = matplotlib.patches.Rectangle((float(roi[0]), float(roi[1])),
                     float(roi[2]), float(roi[3]), fill=True, color='red',
                     alpha=0.2)
@@ -557,6 +576,9 @@ class MovemeterTkGui(tk.Frame):
         
         self.images_plotter.update()
         self.set_status('ROIs plotted :)')
+
+
+
 
     def change_image(self, slider_value=None):
         
