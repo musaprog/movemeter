@@ -15,6 +15,7 @@ import tkinter as tk
 from tkinter import filedialog, simpledialog
 import matplotlib.pyplot as plt
 import matplotlib.patches
+import matplotlib.cm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from PIL import Image
 
@@ -48,7 +49,8 @@ class MovemeterTkGui(tk.Frame):
 
         self.selections = [[0,0,10,10]]
         self.mask_image = None
-        self.rois = []
+        self.roi_groups = []
+        self.current_roi_group = 0
         self.roi_patches = []
         self.results = []
         
@@ -59,6 +61,8 @@ class MovemeterTkGui(tk.Frame):
 
         self.show_controls = False
         self.use_mask_image = False
+
+        self.colors = matplotlib.cm.tab20
 
         # Top menu
         # --------------------------------
@@ -444,7 +448,7 @@ class MovemeterTkGui(tk.Frame):
 
             movzip = [fn for fn in os.listdir(root) if fn.startswith('movemeter') and fn.endswith('.zip')]
             if movzip:
-                settings, filenames, self.rois, self.results = self._load_movzip(os.path.join(root, movzip[0])) 
+                settings, filenames, self.roi_groups, self.results = self._load_movzip(os.path.join(root, movzip[0])) 
                 
                 self.folder_selected(os.path.dirname(filenames[0]))
                 self.set_settings(settings)
@@ -473,9 +477,11 @@ class MovemeterTkGui(tk.Frame):
 
 
     def measure_movement(self):
-        if self.image_fns and self.rois:
+        if self.image_fns and self.roi_groups:
             print('Started roi measurements')
-            
+           
+            self.results = []
+
             cores = int(self.cores_slider.get())
             if cores == 1:
                 cores = False
@@ -484,12 +490,13 @@ class MovemeterTkGui(tk.Frame):
                     multiprocess=cores, print_callback=self.set_status,
                     **self.movemeter_tickboxes.states)
            
-            # Set movemeted data
-            images = [self._included_image_fns()]
-            print(len(images[0]))
-            self.movemeter.set_data(images, [self.rois])
+            for rois in self.roi_groups:
+                # Set movemeted data
+                images = [self._included_image_fns()]
+                self.movemeter.set_data(images, [rois])
+                
+                self.results.append( self.movemeter.measure_movement(0, max_movement=int(self.maxmovement_slider.get()), optimized=True) )
             
-            self.results = self.movemeter.measure_movement(0, max_movement=int(self.maxmovement_slider.get()), optimized=True)
             self.plot_results()
 
             self.calculate_heatmap()
@@ -511,6 +518,9 @@ class MovemeterTkGui(tk.Frame):
     def clear_selections(self):
         self.selections = []
         self.update_grid()
+
+        self.roi_groups = []
+        self.current_roi_group = 0
 
     def update_grid(self, *args):
 
@@ -537,6 +547,9 @@ class MovemeterTkGui(tk.Frame):
         self.set_roi(0,0,*reversed(self.image_shape))
    
 
+    def new_group(self):
+        self.current_roi_group += 1
+
     def set_roi(self, x1,y1,x2,y2, params=None, user_made=True):
         
         if params is None:
@@ -559,7 +572,10 @@ class MovemeterTkGui(tk.Frame):
         else:
             rois = gen_grid((x1,y1,w,h), block_size, step=rel_step)
         
-        self.rois.extend(rois)
+        while len(self.roi_groups) <= self.current_roi_group:
+            self.roi_groups.append([])
+
+        self.roi_groups[self.current_roi_group].extend(rois)
         
         # Draw ROIs
 
@@ -570,9 +586,10 @@ class MovemeterTkGui(tk.Frame):
         
         fig, ax = self.images_plotter.get_figax()
         
+        color = self.colors(self.current_roi_group)
         for roi in rois[:3000]:
             patch = matplotlib.patches.Rectangle((float(roi[0]), float(roi[1])),
-                    float(roi[2]), float(roi[3]), fill=True, color='red',
+                    float(roi[2]), float(roi[3]), fill=True, color=color,
                     alpha=0.2)
             self.roi_patches.append(patch)
 
@@ -639,8 +656,16 @@ class MovemeterTkGui(tk.Frame):
 
     def plot_results(self):
         self.results_plotter.ax.clear()
-        for x,y in self.results[:50]:
-            self.results_plotter.plot(np.sqrt(np.array(x)**2+np.array(y)**2), ax_clear=False, color='red')
+
+        for i_roi_group, result in enumerate(self.results):
+            color = self.colors(i_roi_group)
+            displacements = [np.sqrt(np.array(x)**2+np.array(y)**2) for x,y in result]
+            
+            #for d in displacements[0:50]:
+            #    self.results_plotter.plot(d, ax_clear=False, color=color, lw=0.5)
+            
+            self.results_plotter.plot(self.get_destructive_displacement_mean(result), ax_clear=False, color=color, lw=2)
+
 
     def _included_image_fns(self):
         return [fn for i_fn, fn in enumerate(self.image_fns) if fn not in self.exclude_images and i_fn not in self.exclude_images]
@@ -652,12 +677,16 @@ class MovemeterTkGui(tk.Frame):
         '''
         self.heatmap_images = []
         
-        roi_w, roi_h = self.rois[0][2:]
+        # FIXME Heatmap for ROI groups not implemented properly
+        rois = self.roi_groups[0]
+        results = self.results[0]
 
-        roi_max_x = np.max([z[0] for z in self.rois])
-        roi_min_x = np.min([z[0] for z in self.rois])
-        roi_max_y = np.max([z[1] for z in self.rois])
-        roi_min_y = np.min([z[1] for z in self.rois])
+        roi_w, roi_h = rois[0][2:]
+
+        roi_max_x = np.max([z[0] for z in rois])
+        roi_min_x = np.min([z[0] for z in rois])
+        roi_max_y = np.max([z[1] for z in rois])
+        roi_min_y = np.min([z[1] for z in rois])
         
 
         step = int(self.overlap_slider.get())
@@ -667,7 +696,7 @@ class MovemeterTkGui(tk.Frame):
 
         for i_frame in range(N):
             image = np.zeros( (int((roi_max_y-roi_min_y)/step)+1, int((roi_max_x-roi_min_x)/step)+1) )
-            for ROI, (x,y) in zip(self.rois, self.results):
+            for ROI, (x,y) in zip(rois, results):
                 values = (np.sqrt(np.array(x)**2+np.array(y)**2))
                 
                 value = values[i_frame]
@@ -764,7 +793,7 @@ class MovemeterTkGui(tk.Frame):
             # Dump ROIs
             self.set_status('Saving ROIs')
             with savezip.open('rois.json', 'w') as fp:
-                fp.write(json.dumps(self.rois).encode('utf-8'))
+                fp.write(json.dumps(self.roi_groups).encode('utf-8'))
 
             # Dump analysed movements
             self.set_status('Saving movements')
@@ -805,22 +834,24 @@ class MovemeterTkGui(tk.Frame):
         os.makedirs(save_directory, exist_ok=True)
     
         self._save_movzip(os.path.join(save_directory, 'movemeter_{}.zip'.format(zipsavename)))
-
-        with open(os.path.join(save_directory, 'movements_{}.csv'.format(zipsavename)), 'w') as fp:
-            writer = csv.writer(fp, delimiter=',')
-            
-            displacements = self.get_displacements(self.results)
-            dm_displacement = self.get_destructive_displacement_mean(self.results)
-
-            writer.writerow(['time (s)', 'mean displacement (pixels)', 'destructive mean displacement (pixels)'] + ['ROI{} displacement (pixels)'.format(k) for k in range(len(displacements))])
-
-            for i in range(len(displacements[0])):
-                row = [displacements[j][i] for j in range(len(displacements))]
-                row.insert(0, dm_displacement[i])
-                row.insert(0, np.mean(row))
-                row.insert(0, i/self.fs)
-                writer.writerow(row)
         
+        for i_roigroup, results in enumerate(self.results):
+            fn = os.path.join(save_directory, 'movements_{}_rg{}.csv'.format(zipsavename, i_roigroup))
+            with open(fn, 'w') as fp:
+                writer = csv.writer(fp, delimiter=',')
+                
+                displacements = self.get_displacements(results)
+                dm_displacement = self.get_destructive_displacement_mean(results)
+
+                writer.writerow(['time (s)', 'mean displacement (pixels)', 'destructive mean displacement (pixels)'] + ['ROI{} displacement (pixels)'.format(k) for k in range(len(displacements))])
+
+                for i in range(len(displacements[0])):
+                    row = [displacements[j][i] for j in range(len(displacements))]
+                    row.insert(0, dm_displacement[i])
+                    row.insert(0, np.mean(row))
+                    row.insert(0, i/self.fs)
+                    writer.writerow(row)
+            
         
         slider_i = int(self.image_slider.get())
         self.image_slider.set(int(len(self._included_image_fns()))/2)
