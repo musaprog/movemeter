@@ -112,10 +112,11 @@ class MovemeterTkGui(tk.Frame):
         self.opview = tk.LabelFrame(self, text='Command center')
         self.opview.grid(row=0, column=2, sticky='NSWE')
         
-        self.tabs = Tabs(self.opview, ['Grid creation options', 'Measurement parameters'],
+        self.tabs = Tabs(self.opview, ['Grid creation options', 'Preprocessing', 'Measurement parameters'],
                 draw_frame = True)
         self.tabs.grid(row=0, column=1, columnspan=2, sticky='NSWE')
 
+        
         self.roiview = self.tabs.tabs[0]
         self.roiview.columnconfigure(2, weight=1)
 
@@ -145,13 +146,22 @@ class MovemeterTkGui(tk.Frame):
         self.distance_slider.grid(row=4, column=2, sticky='NSWE')
         
 
-        self.roi_buttons = ButtonsFrame(self.roiview, ['Update', 'Max grid', 'Clear'],
-                [self.update_grid, self.fill_grid, self.clear_selections])
+        self.roi_buttons = ButtonsFrame(self.roiview, ['Update', 'Max grid', 'Clear', 'New group'],
+                [self.update_grid, self.fill_grid, self.clear_selections, self.new_group])
 
         self.roi_buttons.grid(row=5, column=1, columnspan=2)
+        
+
+        self.preview = self.tabs.tabs[1]
+        self.preview.columnconfigure(2, weight=1)
+        tk.Label(self.preview, text='Gaussian blur').grid(row=2, column=1)
+        self.blur_slider = tk.Scale(self.preview, from_=0, to=32,
+                orient=tk.HORIZONTAL)
+        self.blur_slider.set(0)
+        self.blur_slider.grid(row=2, column=2, sticky='NSWE')
 
 
-        self.parview = self.tabs.tabs[1]
+        self.parview = self.tabs.tabs[2]
         self.parview.columnconfigure(2, weight=1)
 
 
@@ -487,7 +497,7 @@ class MovemeterTkGui(tk.Frame):
                 cores = False
             
             self.movemeter = Movemeter(upscale=float(self.upscale_slider.get()),
-                    multiprocess=cores, print_callback=self.set_status,
+                    multiprocess=cores, print_callback=self.set_status, preblur=self.blur_slider.get(),
                     **self.movemeter_tickboxes.states)
            
             for rois in self.roi_groups:
