@@ -62,7 +62,7 @@ class MovemeterTkGui(tk.Frame):
         self.show_controls = False
         self.use_mask_image = False
 
-        self.colors = matplotlib.cm.tab20
+        self.colors = matplotlib.cm.tab10
 
         # Top menu
         # --------------------------------
