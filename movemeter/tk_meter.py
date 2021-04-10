@@ -568,11 +568,13 @@ class MovemeterTkGui(tk.Frame):
             params['blocksize'] = 2*[self.blocksize_slider.get()]
             params['distance'] = self.distance_slider.get()
             params['relstep'] = float(self.overlap_slider.get())/params['blocksize'][0]
+            params['i_roigroup'] = int(self.current_roi_group)
 
         w = x2-x1
         h = y2-y1
         
-        roitype, block_size, distance, rel_step = [params[key] for key in ['roitype','blocksize','distance','relstep']]
+        roitype, block_size, distance, rel_step, i_roigroup = [
+                params[key] for key in ['roitype','blocksize','distance','relstep', 'i_roigroup']]
 
         if user_made:
             self.selections.append( (x1, y1, x2, y2, params) )   
@@ -582,10 +584,10 @@ class MovemeterTkGui(tk.Frame):
         else:
             rois = gen_grid((x1,y1,w,h), block_size, step=rel_step)
         
-        while len(self.roi_groups) <= self.current_roi_group:
+        while len(self.roi_groups) <= i_roigroup:
             self.roi_groups.append([])
 
-        self.roi_groups[self.current_roi_group].extend(rois)
+        self.roi_groups[i_roigroup].extend(rois)
         
         # Draw ROIs
 
@@ -596,11 +598,11 @@ class MovemeterTkGui(tk.Frame):
         
         fig, ax = self.images_plotter.get_figax()
         
-        color = self.colors(self.current_roi_group)
+        color = self.colors(i_roigroup)
         for roi in rois[:3000]:
             patch = matplotlib.patches.Rectangle((float(roi[0]), float(roi[1])),
-                    float(roi[2]), float(roi[3]), fill=True, color=color,
-                    alpha=0.2)
+                    float(roi[2]), float(roi[3]), fill=True, edgecolor=color, facecolor=color,
+                    alpha=1/3)
             self.roi_patches.append(patch)
 
             ax.add_patch(patch)
