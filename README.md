@@ -24,7 +24,7 @@ pip install movemeter
 To open the graphical user interface
 
 ```
-python -m movemeter.tk_meter
+python -m movemeter.tkgui
 ```
 
 
