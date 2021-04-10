@@ -945,8 +945,22 @@ class MovemeterTkGui(tk.Frame):
                     row.insert(0, np.mean(row))
                     row.insert(0, i/self.fs)
                     writer.writerow(row)
-            
-        
+
+                if i_roigroup == 0:
+                    N = len(dm_displacement)
+                    means.append(np.linspace(0, (N-1)/self.fs, N))
+                means.append(dm_displacement)
+
+        with open(os.path.join(save_directory, 'summary_desctructive_{}.csv'.format(zipsavename)), 'w') as fp:
+            writer = csv.writer(fp,  delimiter=',')
+
+            writer.writerow(['time (s)'] +['roi group (pixels)'.format(i) for i in range(len(means)-1)])
+
+            for i in range(len(means[0])):
+                row = [m[i] for m in means]
+                writer.writerow(row)
+
+
         slider_i = int(self.image_slider.get())
         self.image_slider.set(int(len(self._included_image_fns()))/2)
         #change_image(slider_value=int(len(self._included_image_fns())/2))
