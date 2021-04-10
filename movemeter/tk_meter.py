@@ -47,7 +47,7 @@ class MovemeterTkGui(tk.Frame):
         self.images = None
         self.exclude_images = []
 
-        self.selections = [[0,0,10,10]]
+        self.selections = []
         self.mask_image = None
         self.roi_groups = []
         self.current_roi_group = 0
@@ -151,8 +151,8 @@ class MovemeterTkGui(tk.Frame):
         self.distance_slider.grid(row=4, column=2, sticky='NSWE')
         
 
-        self.roi_buttons = ButtonsFrame(self.roiview, ['Update', 'Max grid', 'Clear', 'New group'],
-                [self.update_grid, self.fill_grid, self.clear_selections, self.new_group])
+        self.roi_buttons = ButtonsFrame(self.roiview, ['Update', 'Max grid', 'Clear', 'Undo', 'New group'],
+                [self.update_grid, self.fill_grid, self.clear_selections, self.undo, self.new_group])
 
         self.roi_buttons.grid(row=5, column=1, columnspan=2)
         
@@ -529,6 +529,33 @@ class MovemeterTkGui(tk.Frame):
             self.images[image_i] = tifffile.imread(self.image_fns[image_i])
         return self.images[image_i].shape
 
+    def undo(self):
+        '''
+        Undo a ROI selection made by the user.
+        '''
+        if len(self.selections) == 0:
+            self.set_status('Nothing to undo')
+            return None
+
+        # Index of the roigroup to be undone
+        i_roigroup = self.selections[-1][-1]['i_roigroup']
+
+        # Clear the previous selection data
+        self.selections = self.selections[:-1]
+        
+        # Clear the corresponding ROI patches
+        N_rois_remove = len(self.roi_patches[-1])
+        for patch in self.roi_patches[-1]:
+            patch.remove()
+        self.roi_patches = self.roi_patches[:-1]
+        
+        # Clear the actual ROIs
+        self.roi_groups[i_roigroup] = self.roi_groups[i_roigroup][:-N_rois_remove]
+        
+        self.images_plotter.update()
+        self.set_status('Undone windows {} in ROI group {}'.format(N_rois_remove, i_roigroup))
+
+
 
     def clear_selections(self):
         self.selections = []
@@ -544,11 +571,12 @@ class MovemeterTkGui(tk.Frame):
         self.change_image()
         
         # Clear any previous patches
-        for patch in self.roi_patches:
-            patch.remove()
+        for group in self.roi_patches:
+            for patch in group:
+                patch.remove()
         self.roi_patches = []
 
-        self.rois = []
+        self.roi_groups = []
         
         if self.selections:
             for selection in self.selections:
@@ -604,14 +632,17 @@ class MovemeterTkGui(tk.Frame):
         fig, ax = self.images_plotter.get_figax()
         
         color = self.colors(i_roigroup)
+        
+        patches = []
         for roi in rois[:3000]:
             patch = matplotlib.patches.Rectangle((float(roi[0]), float(roi[1])),
                     float(roi[2]), float(roi[3]), fill=True, edgecolor=color, facecolor=color,
                     alpha=1/3)
-            self.roi_patches.append(patch)
-
+            patches.append(patch)
             ax.add_patch(patch)
         
+        self.roi_patches.append(patches)
+
         self.images_plotter.update()
         self.set_status('ROIs plotted :)')
 
@@ -695,7 +726,13 @@ class MovemeterTkGui(tk.Frame):
         self.heatmap_images = []
         
         # FIXME Heatmap for ROI groups not implemented properly
-        rois = self.roi_groups[0]
+        # Currently just take the first nonempty ROI group
+        rois = [rois for rois in self.roi_groups if len(rois) != 0]
+        if not rois:
+            return None
+        else:
+            rois = rois[0]
+
         results = self.results[0]
 
         roi_w, roi_h = rois[0][2:]
