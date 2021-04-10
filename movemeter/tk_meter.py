@@ -70,6 +70,11 @@ class MovemeterTkGui(tk.Frame):
         
         filemenu = tk.Menu(self)
         filemenu.add_command(label='Open directory', command=self.open_directory)
+        filemenu.add_command(label='Load ROIs',
+                command=lambda: self.apply_movzip(rois=True))
+        filemenu.add_command(label='Sace ROIs',
+                command=lambda: self._save_movzip(only=['rois', 'selections']))
+        
         filemenu.add_command(label='Reprocess old', command=self.recalculate_old)
         filemenu.add_command(label='Replot heatmap', command=self.replot_heatmap)
         self.menu.add_cascade(label='File', menu=filemenu)
@@ -426,7 +431,7 @@ class MovemeterTkGui(tk.Frame):
             movzip = [fn for fn in os.listdir(root) if fn.startswith('movemeter') and fn.endswith('.zip')]
             
             if movzip:
-                settings, filenames, rois, movements = self._load_movzip(os.path.join(root, movzip[0]))
+                settings, filenames, selections, rois, movements = self._load_movzip(os.path.join(root, movzip[0]))
                 
                 self.folder_selected(os.path.dirname(filenames[0]))
                 
@@ -458,7 +463,7 @@ class MovemeterTkGui(tk.Frame):
 
             movzip = [fn for fn in os.listdir(root) if fn.startswith('movemeter') and fn.endswith('.zip')]
             if movzip:
-                settings, filenames, self.roi_groups, self.results = self._load_movzip(os.path.join(root, movzip[0])) 
+                settings, filenames, self.selections, self.roi_groups, self.results = self._load_movzip(os.path.join(root, movzip[0])) 
                 
                 self.folder_selected(os.path.dirname(filenames[0]))
                 self.set_settings(settings)
@@ -773,10 +778,45 @@ class MovemeterTkGui(tk.Frame):
     def set_status(self, text):
         self.status.config(text=text)
         self.status.update_idletasks()
+    
 
+    def apply_movzip(self, fn=None, rois=False):
+        '''
+        Load parts of a movzip and apply settings from it
+        to the current session.
+        '''
+        if fn is None:
+            fn = filedialog.askopenfilename(parent=self, title='Select a movzip',
+                    initialdir=MOVEDIR)
 
-    def _save_movzip(self, fn):
+        settings, filenames, selections, roi_groups, movements = self._load_movzip(fn)
         
+        if rois:
+            self.selections = selections
+            self.rois_groups = roi_groups
+            
+            self.update_grid()
+
+
+    def _save_movzip(self, fn=None, only=None):
+        '''
+        only : bool, string or list of strings
+        '''
+
+        if isinstance(only, str):
+            only = [only]
+
+        if fn is None:
+            if only:
+                title = 'Save '+','.join(only)
+            else:
+                title = 'Save movzip'
+            fn = filedialog.asksaveasfilename(parent=self, title=title,
+                    initialdir=MOVEDIR)
+            
+            if not fn.endswith('.zip'):
+                fn = fn+'.zip'
+
         # Dump GUI settings
         settings = {}
         settings['block_size'] = self.blocksize_slider.get()
@@ -791,46 +831,48 @@ class MovemeterTkGui(tk.Frame):
 
         if self.images:
             settings['images_shape'] = self.image_shape
+        
+        
+        movzip = {'metadata': settings,
+                'image_filenames': self._included_image_fns(),
+                'selections': self.selections,
+                'rois': self.roi_groups,
+                'movements': self.results}
 
+        self.set_status('Saving movzip...')
+        
         with zipfile.ZipFile(fn, 'w') as savezip:
+            for pfn, obj in movzip.items():
 
-            with savezip.open('metadata.json', 'w') as fp:
-                fp.write(json.dumps(settings).encode('utf-8'))
+                if only and pfn not in only:
+                    continue
 
-            # Dump exact used filenames
-            self.set_status('Saving used image filenames')
-            with savezip.open('image_filenames.json', 'w') as fp:
-                fp.write(json.dumps(self._included_image_fns()).encode('utf-8'))
+                with savezip.open(pfn+'.json', 'w') as fp:
+                    fp.write(json.dumps(obj).encode('utf-8'))
+        
+        self.set_status('Mozip saved.')
+        
 
-            # Dump ROIs
-            self.set_status('Saving ROIs')
-            with savezip.open('rois.json', 'w') as fp:
-                fp.write(json.dumps(self.roi_groups).encode('utf-8'))
-
-            # Dump analysed movements
-            self.set_status('Saving movements')
-            with savezip.open('movements.json', 'w') as fp:
-                fp.write(json.dumps(self.results).encode('utf-8'))
 
     def _load_movzip(self, fn):
+        '''
+        Returns settings, image_filenames, selections, rois, movements
+        '''
+
+        movzip = []
 
         with zipfile.ZipFile(fn, 'r') as loadzip:
+            
+            for pfn in ['metadata', 'image_filenames', 'selections', 'rois', 'movements']:
+                try:
+                    with loadzip.open(pfn+'.json', 'r') as fp:
+                        movzip.append( json.loads(fp.read()) )
+        
+                except KeyError:
+                    movzip.append(None)
 
-            with loadzip.open('metadata.json', 'r') as fp:
-                settings = json.loads(fp.read())
+        return (*movzip,)
 
-            # Dump exact used filenames
-            with loadzip.open('image_filenames.json', 'r') as fp:
-                filenames = json.loads(fp.read())
-
-            # Dump ROIs
-            with loadzip.open('rois.json', 'r') as fp:
-                rois = json.loads(fp.read())
-
-            with loadzip.open('movements.json', 'r') as fp:
-                movements = json.loads(fp.read())
-
-        return settings, filenames, rois, movements
 
 
     def export_results(self, batch_name=None):
@@ -847,14 +889,17 @@ class MovemeterTkGui(tk.Frame):
     
         self._save_movzip(os.path.join(save_directory, 'movemeter_{}.zip'.format(zipsavename)))
         
+        means = []
+
         for i_roigroup, results in enumerate(self.results):
             fn = os.path.join(save_directory, 'movements_{}_rg{}.csv'.format(zipsavename, i_roigroup))
+            
+            displacements = self.get_displacements(results)
+            dm_displacement = self.get_destructive_displacement_mean(results)
+
             with open(fn, 'w') as fp:
                 writer = csv.writer(fp, delimiter=',')
                 
-                displacements = self.get_displacements(results)
-                dm_displacement = self.get_destructive_displacement_mean(results)
-
                 writer.writerow(['time (s)', 'mean displacement (pixels)', 'destructive mean displacement (pixels)'] + ['ROI{} displacement (pixels)'.format(k) for k in range(len(displacements))])
 
                 for i in range(len(displacements[0])):
