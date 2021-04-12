@@ -727,13 +727,13 @@ class MovemeterTkGui(tk.Frame):
         
         # FIXME Heatmap for ROI groups not implemented properly
         # Currently just take the first nonempty ROI group
-        rois = [rois for rois in self.roi_groups if len(rois) != 0]
-        if not rois:
+        i_roigroup = [i for i, rois in enumerate(self.roi_groups) if len(rois) != 0]
+        if not i_roigroup:
             return None
         else:
-            rois = rois[0]
-
-        results = self.results[0]
+            i_roigroup = i_roigroup[0]
+        rois = self.roi_groups[i_roigroup]
+        results = self.results[i_roigroup]
 
         roi_w, roi_h = rois[0][2:]
 
