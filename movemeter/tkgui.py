@@ -126,7 +126,7 @@ class MovemeterTkGui(tk.Frame):
         self.roiview.columnconfigure(2, weight=1)
 
         tk.Label(self.roiview, text='Selection type').grid(row=1, column=1)
-        self.roitype_selection = TickboxFrame(self.roiview, ['box', 'line'], ['Box', 'Line'],
+        self.roitype_selection = TickboxFrame(self.roiview, ['box', 'line', 'polygon'], ['Box', 'Line', 'Polygon'],
                 single_select=True, callback=self.change_image)
         self.roitype_selection.grid(row=1, column=2)
 
@@ -593,8 +593,9 @@ class MovemeterTkGui(tk.Frame):
     def new_group(self):
         self.current_roi_group += 1
 
-    def set_roi(self, x1,y1,x2,y2, params=None, user_made=True):
+    def set_roi(self, x1=None,y1=None,x2=None,y2=None, params=None, user_made=True):
         
+
         if params is None:
             params = {}
             params['roitype'] = [s for s, b in self.roitype_selection.states.items() if b][0]
@@ -602,21 +603,30 @@ class MovemeterTkGui(tk.Frame):
             params['distance'] = self.distance_slider.get()
             params['relstep'] = float(self.overlap_slider.get())/params['blocksize'][0]
             params['i_roigroup'] = int(self.current_roi_group)
-
-        w = x2-x1
-        h = y2-y1
         
+       
         roitype, block_size, distance, rel_step, i_roigroup = [
                 params[key] for key in ['roitype','blocksize','distance','relstep', 'i_roigroup']]
 
         if user_made:
             self.selections.append( (x1, y1, x2, y2, params) )   
         
-        if roitype == 'line':
-            rois = grid_along_line((x1, y1), (x2, y2), distance, block_size, step=rel_step)
+        if roitype == 'polygon':
+            vertices = x1
+            rois = []
+            print(vertices)
+            for i_vertex in range(len(vertices)-1):
+                pA, pB = vertices[i_vertex:i_vertex+2]
+                rois.extend( grid_along_line(pA, pB, distance, block_size, step=rel_step) )
         else:
-            rois = gen_grid((x1,y1,w,h), block_size, step=rel_step)
-        
+            w = x2-x1
+            h = y2-y1
+       
+            if roitype == 'line':
+                rois = grid_along_line((x1, y1), (x2, y2), distance, block_size, step=rel_step)
+            else:
+                rois = gen_grid((x1,y1,w,h), block_size, step=rel_step)
+            
         while len(self.roi_groups) <= i_roigroup:
             self.roi_groups.append([])
 
