@@ -6,6 +6,10 @@ other combinations of ROIs
 import numpy as np
 
 
+def _get_cps(blocks):
+    return [np.array((bx+bw/2, by+bh/2)) for bx, by, bw, bh in blocks]
+
+
 def gen_grid(gridpos, blocksize, step=1):
     '''
     Fill a large ROI (gridpos) with smaller ROIs to create
@@ -35,6 +39,32 @@ def gen_grid(gridpos, blocksize, step=1):
             blocks.append([int(bx),int(by),bw,bh])
     
     return blocks
+
+
+def grid_along_ellipse(gridpos, blocksize, step=1, lw=None, fill=False):
+    '''
+    Variation of gen_grid but on circle
+    '''
+    blocks = gen_grid(gridpos, blocksize, step=step)
+    
+    # block cp distances from
+    CP = _get_cps([gridpos])[0]
+    Rx = gridpos[2]/2
+    Ry = gridpos[3]/2
+
+    if fill:
+        lower = 0
+    else:
+        if lw is None:
+            lw = blocksize[0] * 1.1
+        lower = Rx - lw
+
+    cps = _get_cps(blocks)
+    
+    blocks = [block for block, cp in zip(blocks, cps) if lower**2 <= (cp[0]-CP[0])**2+( (cp[1]-CP[1])*(Rx/Ry) )**2 <= Rx**2]
+
+    return blocks
+
 
 
 def grid_along_line(p0, p1, d, blocksize, step=1):
@@ -75,7 +105,7 @@ def grid_along_line(p0, p1, d, blocksize, step=1):
     blocks = gen_grid((x-int(w/2), y-int(h/2), 2*w, 2*h),
             blocksize=blocksize, step=step)
     
-    cps = [np.array((bx+bw/2, by+bh/2)) for bx, by, bw, bh in blocks]
+    cps = _get_cps(blocks)
 
     n = p1 - p0
     blocks = [block for block, cp in zip(blocks, cps) if abs(np.cross(n, np.array(cp)-p0)/np.linalg.norm(n)) < d]
@@ -87,7 +117,6 @@ def grid_along_line(p0, p1, d, blocksize, step=1):
         blocks = [block for block in blocks if y <= block[1]+block[3]/2 <= y+abs(p0[1]-p1[1])]
 
     return blocks
-
 
 
 

@@ -24,7 +24,11 @@ from tk_steroids.matplotlib import CanvasPlotter
 
 from movemeter import __version__
 from movemeter.directories import MOVEDIR
-from movemeter.roi import gen_grid, grid_along_line
+from movemeter.roi import (
+        gen_grid,
+        grid_along_ellipse,
+        grid_along_line
+        )
 from movemeter import Movemeter
 
 
@@ -126,7 +130,9 @@ class MovemeterTkGui(tk.Frame):
         self.roiview.columnconfigure(2, weight=1)
 
         tk.Label(self.roiview, text='Selection type').grid(row=1, column=1)
-        self.roitype_selection = TickboxFrame(self.roiview, ['box', 'line', 'polygon'], ['Box', 'Line', 'Polygon'],
+        self.roitype_selection = TickboxFrame(self.roiview,
+                ['box', 'ellipse', 'line', 'polygon'], 
+                ['Box', 'Ellipse', 'Line', 'Polygon'],
                 single_select=True, callback=self.change_image)
         self.roitype_selection.grid(row=1, column=2)
 
@@ -624,6 +630,8 @@ class MovemeterTkGui(tk.Frame):
        
             if roitype == 'line':
                 rois = grid_along_line((x1, y1), (x2, y2), distance, block_size, step=rel_step)
+            elif roitype == 'ellipse':
+                rois = grid_along_ellipse((x1,y1,w,h), block_size, step=rel_step)
             else:
                 rois = gen_grid((x1,y1,w,h), block_size, step=rel_step)
             
