@@ -28,7 +28,8 @@ from movemeter.roi import (
         gen_grid,
         grid_along_ellipse,
         grid_along_line,
-        grid_arc_from_points
+        grid_arc_from_points,
+        _workout_circle,
         )
 from movemeter import Movemeter
 
@@ -130,10 +131,19 @@ class MovemeterTkGui(tk.Frame):
         self.roiview = self.tabs.tabs[0]
         self.roiview.columnconfigure(2, weight=1)
 
+        self.roi_drawtypes = {'box': 'box',
+                'ellipse': 'ellipse',
+                'line': 'line',
+                'polygon': 'polygon',
+                'arc_from_points': 'polygon',
+                'concentric_arcs_from_points': 'polygon'}
+
         tk.Label(self.roiview, text='Selection type').grid(row=1, column=1)
         self.roitype_selection = TickboxFrame(self.roiview,
-                ['box', 'ellipse', 'line', 'polygon', 'arc_from_points'], 
-                ['Box', 'Ellipse', 'Line', 'Polygon', 'Arc from points'],
+                ['box', 'ellipse', 'line', 'polygon', 'arc_from_points',
+                    'concentric_arcs_from_points'], 
+                ['Box', 'Ellipse', 'Line', 'Polygon', 'Arc from points',
+                    'Concentric Arcs (advancing ROI groups)'],
                 single_select=True, callback=self.change_image)
         self.roitype_selection.grid(row=1, column=2)
 
@@ -600,7 +610,8 @@ class MovemeterTkGui(tk.Frame):
     def new_group(self):
         self.current_roi_group += 1
 
-    def set_roi(self, x1=None,y1=None,x2=None,y2=None, params=None, user_made=True):
+    def set_roi(self, x1=None,y1=None,x2=None,y2=None, params=None, user_made=True,
+            recursion_data=None):
         
 
         if params is None:
@@ -618,7 +629,7 @@ class MovemeterTkGui(tk.Frame):
         if user_made:
             self.selections.append( (x1, y1, x2, y2, params) )   
         
-        if roitype in ['polygon', 'arc_from_points']:
+        if roitype in ['polygon', 'arc_from_points', 'concentric_arcs_from_points']:
             vertices = x1
 
             if roitype == 'polygon':
@@ -628,6 +639,24 @@ class MovemeterTkGui(tk.Frame):
                     rois.extend( grid_along_line(pA, pB, distance, block_size, step=rel_step) )
             elif roitype == 'arc_from_points':
                 rois = grid_arc_from_points((0,0,*reversed(self.image_shape)), block_size, step=rel_step, points=vertices)
+            elif roitype == 'concentric_arcs_from_points':
+                if recursion_data is None:
+                    recursion_data = _workout_circle(vertices)
+                
+                if int(self.current_roi_group) < 3:
+                    self.current_roi_group += 1
+                    cp, R = recursion_data
+                    self.set_roi(x1=x1,y1=y1,x2=x2,y2=y2,
+                            params={**params, **{'i_roigroup': self.current_roi_group}},
+                            user_made=False,
+                            recursion_data=(cp,R-distance))
+                    self.current_roi_group -= 1 
+
+                rois = grid_arc_from_points((0,0,*reversed(self.image_shape)), block_size, step=rel_step, circle=recursion_data)
+
+            else:
+                raise ValueError('unkown roitype {}'.format(roitype))
+
         else:
             w = x2-x1
             h = y2-y1
@@ -709,7 +738,7 @@ class MovemeterTkGui(tk.Frame):
 
         self.images_plotter.imshow(showimage, roi_callback=self.set_roi,
                 cmap='gray', slider=self.show_controls,
-                roi_drawtype=[s for s, b in self.roitype_selection.states.items() if b][0].replace('arc_from_points', 'polygon'))
+                roi_drawtype=self.roi_drawtypes[[s for s, b in self.roitype_selection.states.items() if b][0]])
         #self.images_plotter.update()
 
     @staticmethod

@@ -123,11 +123,7 @@ def grid_along_line(p0, p1, d, blocksize, step=1):
 
 
 
-def grid_arc_from_points(gridpos, blocksize, step=1, points=None):
-    '''
-    Give a points that make up a circle
-    '''
-
+def _workout_circle(points):
     npoints = np.array(points)
 
     def distances_to_cp(cp):
@@ -139,6 +135,17 @@ def grid_arc_from_points(gridpos, blocksize, step=1, points=None):
 
     cp, err = scipy.optimize.leastsq(residual, np.mean(npoints, axis=0))
     R = np.mean(distances_to_cp(cp))
+    return cp, R
+
+
+def grid_arc_from_points(gridpos, blocksize, step=1, points=None, circle=None):
+    '''
+    Give a points that make up a circle
+    '''
+    if circle is None and points is not None:
+        cp, R = _workout_circle(points)
+    else:
+        cp, R = circle
 
     blocks = gen_grid(gridpos, blocksize, step=step)
     
