@@ -68,7 +68,9 @@ class MovemeterTkGui(tk.Frame):
         self.show_controls = False
         self.use_mask_image = False
 
-        self.colors = matplotlib.cm.tab10
+        self.colors = matplotlib.cm.ScalarMappable(cmap=matplotlib.cm.tab10)
+        self.colors.set_clim(0,10)
+
 
         # Top menu
         # --------------------------------
@@ -147,7 +149,7 @@ class MovemeterTkGui(tk.Frame):
                     'concentric_arcs_from_points'], 
                 ['Box', 'Ellipse', 'Line', 'Polygon', 'Arc from points',
                     'Concentric Arcs (advancing ROI groups)'],
-                single_select=True, callback=self.change_image)
+                single_select=True, callback=self.update_roitype_selection)
         self.roitype_selection.grid(row=1, column=2)
 
 
@@ -169,12 +171,21 @@ class MovemeterTkGui(tk.Frame):
                 orient=tk.HORIZONTAL, resolution=1)
         self.distance_slider.set(32)
         self.distance_slider.grid(row=4, column=2, sticky='NSWE')
+
         
+        self.nroi_label = tk.Label(self.roiview, text='Count')
+        self.nroi_label.grid(row=5, column=1)
+        self.nroi_label.grid_remove()
+        self.nroi_slider = tk.Scale(self.roiview, from_=1, to=32,
+                orient=tk.HORIZONTAL, resolution=1,
+                command=self.nroi_slider_callback)
+        self.nroi_slider.grid(row=5, column=2, sticky='NSWE')
+        self.nroi_slider.grid_remove()
 
         self.roi_buttons = ButtonsFrame(self.roiview, ['Update', 'Max grid', 'Clear', 'Undo', 'New group'],
                 [self.update_grid, self.fill_grid, self.clear_selections, self.undo, self.new_group])
 
-        self.roi_buttons.grid(row=5, column=1, columnspan=2)
+        self.roi_buttons.grid(row=6, column=1, columnspan=2)
         
 
         self.preview = self.tabs.tabs[1]
@@ -576,6 +587,23 @@ class MovemeterTkGui(tk.Frame):
         self.set_status('Undone windows {} in ROI group {}'.format(N_rois_remove, i_roigroup))
 
 
+    def nroi_slider_callback(self, N=None):
+        self.colors.set_cmap(matplotlib.cm.gnuplot2)
+        self.colors.set_clim(0, self.nroi_slider.get())
+
+    def update_roitype_selection(self):
+
+        if self.roitype_selection.states['concentric_arcs_from_points']:
+            self.nroi_label.grid()
+            self.nroi_slider.grid()
+            self.nroi_slider_callback()
+        else:
+            self.nroi_label.grid_remove()
+            self.nroi_slider.grid_remove()
+            self.colors.set_cmap(matplotlib.cm.tab10)
+            self.colors.set_clim(0, 10)
+
+        self.change_image()
 
     def clear_selections(self):
         self.selections = []
@@ -623,11 +651,12 @@ class MovemeterTkGui(tk.Frame):
             params['blocksize'] = 2*[self.blocksize_slider.get()]
             params['distance'] = self.distance_slider.get()
             params['relstep'] = float(self.overlap_slider.get())/params['blocksize'][0]
+            params['count'] = self.nroi_slider.get()
             params['i_roigroup'] = int(self.current_roi_group)
         
        
-        roitype, block_size, distance, rel_step, i_roigroup = [
-                params[key] for key in ['roitype','blocksize','distance','relstep', 'i_roigroup']]
+        roitype, block_size, distance, rel_step, i_roigroup, count = [
+                params[key] for key in ['roitype','blocksize','distance','relstep', 'i_roigroup', 'count']]
 
         if user_made:
             self.selections.append( (x1, y1, x2, y2, params) )   
@@ -646,7 +675,7 @@ class MovemeterTkGui(tk.Frame):
                 if recursion_data is None:
                     recursion_data = _workout_circle(vertices)
                 
-                if int(self.current_roi_group) < 3:
+                if int(self.current_roi_group) < count-1:
                     self.current_roi_group += 1
                     cp, R = recursion_data
                     self.set_roi(x1=x1,y1=y1,x2=x2,y2=y2,
@@ -655,7 +684,8 @@ class MovemeterTkGui(tk.Frame):
                             recursion_data=(cp,R-distance))
                     self.current_roi_group -= 1 
 
-                rois = grid_arc_from_points((0,0,*reversed(self.image_shape)), block_size, step=rel_step, circle=recursion_data)
+                rois = grid_arc_from_points((0,0,*reversed(self.image_shape)), block_size, step=rel_step,
+                        circle=recursion_data, lw=distance)
 
             else:
                 raise ValueError('unkown roitype {}'.format(roitype))
@@ -685,7 +715,7 @@ class MovemeterTkGui(tk.Frame):
         
         fig, ax = self.images_plotter.get_figax()
         
-        color = self.colors(i_roigroup)
+        color = self.colors.to_rgba(i_roigroup%self.colors.get_clim()[1])
         
         patches = []
         for roi in rois[:3000]:
@@ -760,7 +790,7 @@ class MovemeterTkGui(tk.Frame):
         self.results_plotter.ax.clear()
 
         for i_roi_group, result in enumerate(self.results):
-            color = self.colors(i_roi_group)
+            color = self.colors.to_rgba(i_roi_group%self.colors.get_clim()[1])
             displacements = [np.sqrt(np.array(x)**2+np.array(y)**2) for x,y in result]
             
             #for d in displacements[0:50]:

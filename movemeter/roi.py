@@ -138,10 +138,13 @@ def _workout_circle(points):
     return cp, R
 
 
-def grid_arc_from_points(gridpos, blocksize, step=1, points=None, circle=None):
+def grid_arc_from_points(gridpos, blocksize, step=1, points=None, circle=None, lw=None):
     '''
     Give a points that make up a circle
     '''
+    if lw is None:
+        lw = blocksize[0]*1.1
+
     if circle is None and points is not None:
         cp, R = _workout_circle(points)
     else:
@@ -149,5 +152,5 @@ def grid_arc_from_points(gridpos, blocksize, step=1, points=None, circle=None):
 
     blocks = gen_grid(gridpos, blocksize, step=step)
     
-    return _square_to_ellipse(blocks, R, R, cp, R-blocksize[0]*1.1)
+    return _square_to_ellipse(blocks, R, R, cp, R-lw)
 
