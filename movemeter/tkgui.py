@@ -27,7 +27,8 @@ from movemeter.directories import MOVEDIR
 from movemeter.roi import (
         gen_grid,
         grid_along_ellipse,
-        grid_along_line
+        grid_along_line,
+        grid_arc_from_points
         )
 from movemeter import Movemeter
 
@@ -131,8 +132,8 @@ class MovemeterTkGui(tk.Frame):
 
         tk.Label(self.roiview, text='Selection type').grid(row=1, column=1)
         self.roitype_selection = TickboxFrame(self.roiview,
-                ['box', 'ellipse', 'line', 'polygon'], 
-                ['Box', 'Ellipse', 'Line', 'Polygon'],
+                ['box', 'ellipse', 'line', 'polygon', 'arc_from_points'], 
+                ['Box', 'Ellipse', 'Line', 'Polygon', 'Arc from points'],
                 single_select=True, callback=self.change_image)
         self.roitype_selection.grid(row=1, column=2)
 
@@ -617,13 +618,16 @@ class MovemeterTkGui(tk.Frame):
         if user_made:
             self.selections.append( (x1, y1, x2, y2, params) )   
         
-        if roitype == 'polygon':
+        if roitype in ['polygon', 'arc_from_points']:
             vertices = x1
-            rois = []
-            print(vertices)
-            for i_vertex in range(len(vertices)-1):
-                pA, pB = vertices[i_vertex:i_vertex+2]
-                rois.extend( grid_along_line(pA, pB, distance, block_size, step=rel_step) )
+
+            if roitype == 'polygon':
+                rois = []
+                for i_vertex in range(len(vertices)-1):
+                    pA, pB = vertices[i_vertex:i_vertex+2]
+                    rois.extend( grid_along_line(pA, pB, distance, block_size, step=rel_step) )
+            elif roitype == 'arc_from_points':
+                rois = grid_arc_from_points((0,0,*reversed(self.image_shape)), block_size, step=rel_step, points=vertices)
         else:
             w = x2-x1
             h = y2-y1
@@ -705,7 +709,7 @@ class MovemeterTkGui(tk.Frame):
 
         self.images_plotter.imshow(showimage, roi_callback=self.set_roi,
                 cmap='gray', slider=self.show_controls,
-                roi_drawtype=[s for s, b in self.roitype_selection.states.items() if b][0])
+                roi_drawtype=[s for s, b in self.roitype_selection.states.items() if b][0].replace('arc_from_points', 'polygon'))
         #self.images_plotter.update()
 
     @staticmethod

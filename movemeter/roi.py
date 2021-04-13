@@ -4,6 +4,7 @@ other combinations of ROIs
 '''
 
 import numpy as np
+import scipy.optimize
 
 
 def _get_cps(blocks):
@@ -41,6 +42,13 @@ def gen_grid(gridpos, blocksize, step=1):
     return blocks
 
 
+def _square_to_ellipse(blocks, Rx, Ry, CP, lower):
+    cps = _get_cps(blocks)
+    blocks = [block for block, cp in zip(blocks, cps) if lower**2 <= (cp[0]-CP[0])**2+( (cp[1]-CP[1])*(Rx/Ry) )**2 <= Rx**2]
+    
+    return blocks
+
+
 def grid_along_ellipse(gridpos, blocksize, step=1, lw=None, fill=False):
     '''
     Variation of gen_grid but on circle
@@ -59,12 +67,7 @@ def grid_along_ellipse(gridpos, blocksize, step=1, lw=None, fill=False):
             lw = blocksize[0] * 1.1
         lower = Rx - lw
 
-    cps = _get_cps(blocks)
-    
-    blocks = [block for block, cp in zip(blocks, cps) if lower**2 <= (cp[0]-CP[0])**2+( (cp[1]-CP[1])*(Rx/Ry) )**2 <= Rx**2]
-
-    return blocks
-
+    return _square_to_ellipse(blocks, Rx, Ry, CP, lower)
 
 
 def grid_along_line(p0, p1, d, blocksize, step=1):
@@ -119,4 +122,25 @@ def grid_along_line(p0, p1, d, blocksize, step=1):
     return blocks
 
 
+
+def grid_arc_from_points(gridpos, blocksize, step=1, points=None):
+    '''
+    Give a points that make up a circle
+    '''
+
+    npoints = np.array(points)
+
+    def distances_to_cp(cp):
+        return np.sqrt((npoints[:,0]-cp[0])**2 + (npoints[:,1]-cp[1])**2)
+
+    def residual(cp):
+        cp_i = distances_to_cp(cp)
+        return cp_i - np.mean(cp_i)
+
+    cp, err = scipy.optimize.leastsq(residual, np.mean(npoints, axis=0))
+    R = np.mean(distances_to_cp(cp))
+
+    blocks = gen_grid(gridpos, blocksize, step=step)
+    
+    return _square_to_ellipse(blocks, R, R, cp, R-blocksize[0]*1.1)
 
