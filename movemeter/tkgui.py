@@ -80,7 +80,10 @@ class MovemeterTkGui(tk.Frame):
                 command=lambda: self.apply_movzip(rois=True))
         filemenu.add_command(label='Sace ROIs',
                 command=lambda: self._save_movzip(only=['rois', 'selections']))
-        
+    
+        filemenu.add_command(label='Save ROI view',
+                command=self.save_roiview)
+
         filemenu.add_command(label='Reprocess old', command=self.recalculate_old)
         filemenu.add_command(label='Replot heatmap', command=self.replot_heatmap)
         self.menu.add_cascade(label='File', menu=filemenu)
@@ -961,6 +964,12 @@ class MovemeterTkGui(tk.Frame):
 
         return (*movzip,)
 
+    
+    def save_roiview(self):
+        savefn = filedialog.asksaveasfilename()
+        if savefn:
+            fig = self.images_plotter.figure
+            fig.savefig(savefn, dpi=600)
 
 
     def export_results(self, batch_name=None):
