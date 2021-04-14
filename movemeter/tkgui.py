@@ -827,8 +827,8 @@ class MovemeterTkGui(tk.Frame):
 
         self.images_plotter.imshow(showimage, roi_callback=self.set_roi,
                 cmap='gray', slider=self.show_controls,
-                roi_drawtype=self.roi_drawtypes[[s for s, b in self.roitype_selection.states.items() if b][0]])
-        #self.images_plotter.update()
+                roi_drawtype=self.roi_drawtypes[self.roitype_selection.ticked[0]])
+
 
     @staticmethod
     def get_displacements(results):
