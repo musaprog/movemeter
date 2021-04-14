@@ -16,6 +16,7 @@ from tkinter import filedialog, simpledialog
 import matplotlib.pyplot as plt
 import matplotlib.patches
 import matplotlib.cm
+import matplotlib.transforms
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from PIL import Image
 
@@ -152,40 +153,47 @@ class MovemeterTkGui(tk.Frame):
                 single_select=True, callback=self.update_roitype_selection)
         self.roitype_selection.grid(row=1, column=2)
 
+        tk.Label(self.roiview, text='Mode').grid(row=2, column=1)
+        self.drawmode_selection = TickboxFrame(self.roiview,
+                ['add', 'remove'], ['Add', 'Remove'],
+                single_select=True
+                )
+        self.drawmode_selection.grid(row=2, column=2)
 
-        tk.Label(self.roiview, text='Block size').grid(row=2, column=1)
+
+        tk.Label(self.roiview, text='Block size').grid(row=3, column=1)
         self.blocksize_slider = tk.Scale(self.roiview, from_=16, to=128,
                 orient=tk.HORIZONTAL)
         self.blocksize_slider.set(32)
-        self.blocksize_slider.grid(row=2, column=2, sticky='NSWE')
+        self.blocksize_slider.grid(row=3, column=2, sticky='NSWE')
 
-        tk.Label(self.roiview, text='Block distance').grid(row=3, column=1)
+        tk.Label(self.roiview, text='Block distance').grid(row=4, column=1)
         self.overlap_slider = tk.Scale(self.roiview, from_=1, to=128,
                 orient=tk.HORIZONTAL, resolution=1)
         self.overlap_slider.set(32)
-        self.overlap_slider.grid(row=3, column=2, sticky='NSWE')
+        self.overlap_slider.grid(row=4, column=2, sticky='NSWE')
         
         self.distance_label = tk.Label(self.roiview, text='Line-block distance')
-        self.distance_label.grid(row=4, column=1)
+        self.distance_label.grid(row=5, column=1)
         self.distance_slider = tk.Scale(self.roiview, from_=1, to=128,
                 orient=tk.HORIZONTAL, resolution=1)
         self.distance_slider.set(32)
-        self.distance_slider.grid(row=4, column=2, sticky='NSWE')
+        self.distance_slider.grid(row=5, column=2, sticky='NSWE')
 
         
         self.nroi_label = tk.Label(self.roiview, text='Count')
-        self.nroi_label.grid(row=5, column=1)
+        self.nroi_label.grid(row=6, column=1)
         self.nroi_label.grid_remove()
         self.nroi_slider = tk.Scale(self.roiview, from_=1, to=32,
                 orient=tk.HORIZONTAL, resolution=1,
                 command=self.nroi_slider_callback)
-        self.nroi_slider.grid(row=5, column=2, sticky='NSWE')
+        self.nroi_slider.grid(row=6, column=2, sticky='NSWE')
         self.nroi_slider.grid_remove()
 
         self.roi_buttons = ButtonsFrame(self.roiview, ['Update', 'Max grid', 'Clear', 'Undo', 'New group'],
                 [self.update_grid, self.fill_grid, self.clear_selections, self.undo, self.new_group])
 
-        self.roi_buttons.grid(row=6, column=1, columnspan=2)
+        self.roi_buttons.grid(row=7, column=1, columnspan=2)
         
 
         self.preview = self.tabs.tabs[1]
@@ -653,10 +661,11 @@ class MovemeterTkGui(tk.Frame):
             params['relstep'] = float(self.overlap_slider.get())/params['blocksize'][0]
             params['count'] = self.nroi_slider.get()
             params['i_roigroup'] = int(self.current_roi_group)
-        
+            params['mode'] = self.drawmode_selection.ticked[0]
+
        
-        roitype, block_size, distance, rel_step, i_roigroup, count = [
-                params[key] for key in ['roitype','blocksize','distance','relstep', 'i_roigroup', 'count']]
+        roitype, block_size, distance, rel_step, i_roigroup, count, mode = [
+                params[key] for key in ['roitype','blocksize','distance','relstep', 'i_roigroup', 'count', 'mode']]
 
         if user_made:
             self.selections.append( (x1, y1, x2, y2, params) )   
@@ -704,29 +713,72 @@ class MovemeterTkGui(tk.Frame):
         while len(self.roi_groups) <= i_roigroup:
             self.roi_groups.append([])
 
-        self.roi_groups[i_roigroup].extend(rois)
-        
-        # Draw ROIs
+        if mode == 'add':
+            self.roi_groups[i_roigroup].extend(rois)
+     
+            # Draw ROIs
 
-        if len(rois) < 3000:
-            self.set_status('Plotting all ROIs...')
+            if len(rois) < 3000:
+                self.set_status('Plotting all ROIs...')
+            else:
+                self.set_status('Too many ROIs, plotting only 3 000 first...')
+            
+            fig, ax = self.images_plotter.get_figax()
+            
+            color = self.colors.to_rgba(i_roigroup%self.colors.get_clim()[1])
+            
+            patches = []
+            for roi in rois[:3000]:
+                patch = matplotlib.patches.Rectangle((float(roi[0]), float(roi[1])),
+                        float(roi[2]), float(roi[3]), fill=True, edgecolor=color, facecolor=color,
+                        alpha=1/3)
+                patches.append(patch)
+                ax.add_patch(patch)
+            
+            self.roi_patches.append(patches)
+
+        elif mode == 'remove':
+            
+            def _overlaps(a, b):
+                return not (a[0]+a[2] < b[0] or b[0]+b[2] < a[0] or a[1]+a[3] < b[1] or b[1]+b[3] < a[1])
+
+            for i_rgroup in range(len(self.roi_groups)) :
+                
+                # Remove ROIs
+                remove_indices = []
+                for i_old, old_roi in enumerate(self.roi_groups[i_rgroup]):    
+                    for new_roi in rois:
+                        if _overlaps(old_roi, new_roi):
+                            remove_indices.append(i_old)
+                            break
+                
+                print('removing {} in rg {}'.format(remove_indices, i_rgroup))
+
+                for i_rm in remove_indices[::-1]:
+                    self.roi_groups[i_rgroup].pop()
+
+                    #self.roi_patches[i_rgroup].pop()
+                
+            # Remove patches separetly
+            # Potential optimization if needed: Not sure if this is faster or
+            #    slower than the own _overlaps
+            # Anyway quite risky if rois and patches become unsynced
+            #    (should be made in one-to-one correspondence)
+            new_bboxes = [matplotlib.transforms.Bbox([[x, y],[x+w,y+h]]) for x,y,w,h in rois]
+            for patches, selections in zip(self.roi_patches, self.selections):
+                
+                remove_indices = []
+                for i_patch, patch in enumerate(patches):
+                    if patch.get_bbox().count_overlaps(new_bboxes):
+                        patch.remove()
+                        remove_indices.append(i_patch)
+
+                for i_rm in remove_indices[::-1]:
+                    patches.pop(i_rm)
+
+
         else:
-            self.set_status('Too many ROIs, plotting only 3 000 first...')
-        
-        fig, ax = self.images_plotter.get_figax()
-        
-        color = self.colors.to_rgba(i_roigroup%self.colors.get_clim()[1])
-        
-        patches = []
-        for roi in rois[:3000]:
-            patch = matplotlib.patches.Rectangle((float(roi[0]), float(roi[1])),
-                    float(roi[2]), float(roi[3]), fill=True, edgecolor=color, facecolor=color,
-                    alpha=1/3)
-            patches.append(patch)
-            ax.add_patch(patch)
-        
-        self.roi_patches.append(patches)
-
+            raise ValueError('unkown mode {}'.format(mode))
         self.images_plotter.update()
         self.set_status('ROIs plotted :)')
 
