@@ -30,6 +30,7 @@ from movemeter.roi import (
         grid_along_ellipse,
         grid_along_line,
         grid_arc_from_points,
+        grid_radial_line_from_points,
         _workout_circle,
         )
 from movemeter import Movemeter
@@ -146,14 +147,17 @@ class MovemeterTkGui(tk.Frame):
                 'line': 'line',
                 'polygon': 'polygon',
                 'arc_from_points': 'polygon',
-                'concentric_arcs_from_points': 'polygon'}
+                'concentric_arcs_from_points': 'polygon',
+                'radial_lines_from_points': 'polygon'}
 
         tk.Label(self.roiview, text='Selection type').grid(row=1, column=1)
         self.roitype_selection = TickboxFrame(self.roiview,
                 ['box', 'ellipse', 'line', 'polygon', 'arc_from_points',
-                    'concentric_arcs_from_points'], 
+                    'concentric_arcs_from_points',
+                    'radial_lines_from_points'], 
                 ['Box', 'Ellipse', 'Line', 'Polygon', 'Arc from points',
-                    'Concentric Arcs (advancing ROI groups)'],
+                    'Concentric Arcs (++RG)',
+                    'Radial lines (++RG)'],
                 single_select=True, callback=self.update_roitype_selection)
         self.roitype_selection.grid(row=1, column=2)
 
@@ -605,7 +609,7 @@ class MovemeterTkGui(tk.Frame):
 
     def update_roitype_selection(self):
 
-        if self.roitype_selection.states['concentric_arcs_from_points']:
+        if self.roitype_selection.ticked[0] in ['concentric_arcs_from_points', 'radial_lines_from_points']:
             self.nroi_label.grid()
             self.nroi_slider.grid()
             self.nroi_slider_callback()
@@ -674,7 +678,8 @@ class MovemeterTkGui(tk.Frame):
         if user_made:
             self.selections.append( (x1, y1, x2, y2, params) )   
         
-        if roitype in ['polygon', 'arc_from_points', 'concentric_arcs_from_points']:
+        if roitype in ['polygon', 'arc_from_points', 'concentric_arcs_from_points',
+                'radial_lines_from_points']:
             vertices = x1
 
             if roitype == 'polygon':
@@ -684,21 +689,32 @@ class MovemeterTkGui(tk.Frame):
                     rois.extend( grid_along_line(pA, pB, distance, block_size, step=rel_step) )
             elif roitype == 'arc_from_points':
                 rois = grid_arc_from_points((0,0,*reversed(self.image_shape)), block_size, step=rel_step, points=vertices)
-            elif roitype == 'concentric_arcs_from_points':
+            elif roitype in ['concentric_arcs_from_points', 'radial_lines_from_points']:
                 if recursion_data is None:
                     recursion_data = _workout_circle(vertices)
                 
                 if int(self.current_roi_group) < count-1:
                     self.current_roi_group += 1
                     cp, R = recursion_data
+                    
+                    if roitype == 'concentric_arcs_from_points':
+                        new_recursion_data = (cp, R-distance)
+                    elif roitype == 'radial_lines_from_points':
+                        new_recursion_data = (cp, R)
+
                     self.set_roi(x1=x1,y1=y1,x2=x2,y2=y2,
                             params={**params, **{'i_roigroup': self.current_roi_group}},
                             user_made=False,
-                            recursion_data=(cp,R-distance))
+                            recursion_data=new_recursion_data)
                     self.current_roi_group -= 1 
-
-                rois = grid_arc_from_points((0,0,*reversed(self.image_shape)), block_size, step=rel_step,
-                        circle=recursion_data, lw=distance)
+                
+                if roitype == 'concentric_arcs_from_points':
+                    rois = grid_arc_from_points((0,0,*reversed(self.image_shape)), block_size, step=rel_step,
+                            circle=recursion_data, lw=distance)
+                elif roitype == 'radial_lines_from_points':
+                    rois = grid_radial_line_from_points((0,0,*reversed(self.image_shape)), block_size, step=rel_step,
+                            circle=recursion_data,
+                            i_segment=self.current_roi_group, n_segments=count)
 
             else:
                 raise ValueError('unkown roitype {}'.format(roitype))

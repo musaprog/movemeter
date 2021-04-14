@@ -3,6 +3,7 @@ Parametric functions to generate ROIs or grids or
 other combinations of ROIs
 '''
 
+import math
 import numpy as np
 import scipy.optimize
 
@@ -153,4 +154,33 @@ def grid_arc_from_points(gridpos, blocksize, step=1, points=None, circle=None, l
     blocks = gen_grid(gridpos, blocksize, step=step)
     
     return _square_to_ellipse(blocks, R, R, cp, R-lw)
+
+
+
+def grid_radial_line_from_points(gridpos, blocksize, step=1,
+        points=None, circle=None,
+        i_segment=0, n_segments=10):
+    '''
+    Giving either the points or the circle parameters, create radial lines or
+    '''
+    if circle is None and points is not None:
+        cp, R = _workout_circle(points)
+    else:
+        cp, R = circle
+    
+    blocks = gen_grid(gridpos, blocksize, step=step)
+    blocks = _square_to_ellipse(blocks, R, R, cp, 0)
+    
+    # blocks angles
+    angles = [math.atan2(y-cp[1], x-cp[0])+math.pi for x,y in _get_cps(blocks)]
+    
+    # Angle limits
+    A = i_segment * ((2*math.pi) / n_segments)
+    B = (i_segment+1) * ((2*math.pi) / n_segments)
+
+    blocks = [block for block, angle in zip(blocks, angles) if A < angle <= B]
+
+    return blocks
+
+
 
