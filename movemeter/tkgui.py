@@ -21,7 +21,13 @@ import matplotlib.transforms
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from PIL import Image
 
-from tk_steroids.elements import Listbox, Tabs, TickboxFrame, ButtonsFrame
+from tk_steroids.elements import (
+        Listbox,
+        Tabs,
+        TickboxFrame,
+        ButtonsFrame,
+        DropdownList,
+        )
 from tk_steroids.matplotlib import CanvasPlotter
 
 from movemeter import __version__
@@ -208,8 +214,11 @@ class MovemeterTkGui(tk.Frame):
                 'concentric_arcs_from_points': 'polygon',
                 'radial_lines_from_points': 'polygon'}
 
-        tk.Label(self.roiview, text='Selection type').grid(row=1, column=1)
-        self.roitype_selection = TickboxFrame(self.roiview,
+        tk.Label(self.roiview, text='Selection mode').grid(row=1, column=1)
+        self.selmode_frame = tk.Frame(self.roiview)
+        self.selmode_frame.grid(row=1, column=2)
+        
+        self.roitype_selection = DropdownList(self.selmode_frame,
                 ['box', 'ellipse', 'line', 'polygon', 'arc_from_points',
                     'concentric_arcs_from_points',
                     'radial_lines_from_points'], 
@@ -219,12 +228,11 @@ class MovemeterTkGui(tk.Frame):
                 single_select=True, callback=self.update_roitype_selection)
         self.roitype_selection.grid(row=1, column=2)
 
-        tk.Label(self.roiview, text='Mode').grid(row=2, column=1)
-        self.drawmode_selection = TickboxFrame(self.roiview,
+        self.drawmode_selection = TickboxFrame(self.selmode_frame,
                 ['add', 'remove'], ['Add', 'Remove'],
                 single_select=True
                 )
-        self.drawmode_selection.grid(row=2, column=2)
+        self.drawmode_selection.grid(row=1, column=1)
 
 
         tk.Label(self.roiview, text='Block size').grid(row=3, column=1)
