@@ -16,6 +16,7 @@ from tkinter import filedialog, simpledialog
 import matplotlib.pyplot as plt
 import matplotlib.patches
 import matplotlib.cm
+import matplotlib.colors
 import matplotlib.transforms
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from PIL import Image
@@ -34,6 +35,54 @@ from movemeter.roi import (
         _workout_circle,
         )
 from movemeter import Movemeter
+
+
+
+class ColormapSelector(tk.Frame):
+    '''
+    Widget to preview and select a matplotlib
+    colormap.
+    '''
+    def __init__(self, tk_parent, callback, startmap=None):
+        '''
+        callback : callable
+            When selected, the colormap passed to this callback function
+        '''
+        tk.Frame.__init__(self, tk_parent)
+        
+        self._callback = callback
+
+        # Dict of all availbale colormap objects
+        self.colormaps = {name: getattr(matplotlib.cm, name) for name in dir(matplotlib.cm) if isinstance(
+            getattr(matplotlib.cm, name), matplotlib.colors.Colormap)}
+
+       
+        self.listbox = Listbox(self, list(self.colormaps.keys()), callback=self.on_selection)
+        self.listbox.grid(row=1, column=1, sticky='NSWE')
+
+        self.plotter = CanvasPlotter(self, text='Preview', figsize=(0.5,5))
+        self.plotter.grid(row=1, column=2, sticky='NSWE')
+        
+        data = np.linspace(0,10)[:, np.newaxis]
+        self.plotter.imshow(data)
+        if startmap:
+            self.on_selection(startmap)
+
+        self.select_button = tk.Button(self, text='Ok', command=self.on_ok)
+        self.select_button.grid(row=2, column=1, columnspan=2, sticky='NSWE')
+
+        self.grid_rowconfigure(1, weight=1)
+        self.grid_columnconfigure(1, weight=10)
+        self.grid_columnconfigure(1, weight=1)
+
+    def on_selection(self, name):
+        self._current = name
+        self.plotter.imshow_obj.cmap = self.colormaps[name]
+        self.plotter.update()
+    
+    def on_ok(self):
+        self._callback(self.colormaps[self._current])
+
 
 
 class MovemeterTkGui(tk.Frame):
@@ -134,12 +183,21 @@ class MovemeterTkGui(tk.Frame):
         self.opview = tk.LabelFrame(self, text='Command center')
         self.opview.grid(row=0, column=2, sticky='NSWE')
         
-        self.tabs = Tabs(self.opview, ['Grid creation options', 'Preprocessing', 'Measurement parameters'],
+        self.tabs = Tabs(self.opview,
+                ['Style', 'Grid creation options', 'Preprocessing', 'Measurement parameters'],
                 draw_frame = True)
         self.tabs.grid(row=0, column=1, columnspan=2, sticky='NSWE')
-
         
-        self.roiview = self.tabs.tabs[0]
+       
+        self.styleview = self.tabs.tabs[0]
+        
+        self.colormap_label = tk.Label(self.styleview, text='current colormap')
+        self.colormap_label.grid(row=1, column=1)
+        self.colormap_selection = tk.Button(self.styleview, text='Select colormap...',
+                command=self.open_colormap_selection)
+        self.colormap_selection.grid(row=1, column=2)
+
+        self.roiview = self.tabs.tabs[1]
         self.roiview.columnconfigure(2, weight=1)
 
         self.roi_drawtypes = {'box': 'box',
@@ -204,7 +262,7 @@ class MovemeterTkGui(tk.Frame):
         self.roi_buttons.grid(row=7, column=1, columnspan=2)
         
 
-        self.preview = self.tabs.tabs[1]
+        self.preview = self.tabs.tabs[2]
         self.preview.columnconfigure(2, weight=1)
         tk.Label(self.preview, text='Gaussian blur').grid(row=2, column=1)
         self.blur_slider = tk.Scale(self.preview, from_=0, to=32,
@@ -213,7 +271,7 @@ class MovemeterTkGui(tk.Frame):
         self.blur_slider.grid(row=2, column=2, sticky='NSWE')
 
 
-        self.parview = self.tabs.tabs[2]
+        self.parview = self.tabs.tabs[3]
         self.parview.columnconfigure(2, weight=1)
 
 
@@ -576,6 +634,23 @@ class MovemeterTkGui(tk.Frame):
             self.images[image_i] = tifffile.imread(self.image_fns[image_i])
         return self.images[image_i].shape
 
+    
+    def open_colormap_selection(self):
+        
+        top = tk.Toplevel(self)
+        top.title('Select colormap')
+        sel = ColormapSelector(top, callback=self.apply_colormap,
+                startmap=self.colors.get_cmap().name)
+        sel.grid(row=0, column=0, sticky='NSWE')
+        top.rowconfigure(0, weight=1)
+        top.columnconfigure(0, weight=1)
+        top.mainloop()
+
+    def apply_colormap(self, colormap):
+        self.colors.set_cmap(colormap)
+        self.colormap_label.config(text=colormap.name)
+        self.update_grid()
+
     def undo(self):
         '''
         Undo a ROI selection made by the user.
@@ -604,7 +679,6 @@ class MovemeterTkGui(tk.Frame):
 
 
     def nroi_slider_callback(self, N=None):
-        self.colors.set_cmap(matplotlib.cm.gnuplot2)
         self.colors.set_clim(0, self.nroi_slider.get())
 
     def update_roitype_selection(self):
@@ -616,7 +690,6 @@ class MovemeterTkGui(tk.Frame):
         else:
             self.nroi_label.grid_remove()
             self.nroi_slider.grid_remove()
-            self.colors.set_cmap(matplotlib.cm.tab10)
             self.colors.set_clim(0, 10)
 
         self.change_image()
