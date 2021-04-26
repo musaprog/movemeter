@@ -125,36 +125,54 @@ class MovemeterTkGui(tk.Frame):
         self.show_controls = False
         self.use_mask_image = False
 
+        self.batch_name = 'batch_name'
+
         self.colors = matplotlib.cm.ScalarMappable(cmap=matplotlib.cm.tab10)
         self.colors.set_clim(0,10)
-
+        
 
         # Top menu
         # --------------------------------
         self.menu = tk.Menu(self)
         
         filemenu = tk.Menu(self)
-        filemenu.add_command(label='Open directory', command=self.open_directory)
+        filemenu.add_command(label='Add directory...', command=self.open_directory)
+        filemenu.add_separator()
         filemenu.add_command(label='Load ROIs',
                 command=lambda: self.apply_movzip(rois=True))
-        filemenu.add_command(label='Sace ROIs',
+        filemenu.add_command(label='Save ROIs',
                 command=lambda: self._save_movzip(only=['rois', 'selections']))
-    
+        
+        filemenu.add_separator()
         filemenu.add_command(label='Save ROI view',
                 command=self.save_roiview)
         
         filemenu.add_command(label='Save ROIs only view',
                 command=lambda: self.save_roiview(only_rois=True))
-
-
-        filemenu.add_command(label='Reprocess old', command=self.recalculate_old)
-        filemenu.add_command(label='Replot heatmap', command=self.replot_heatmap)
+        filemenu.add_separator()
+        filemenu.add_command(label='Quit', command=self.parent.destroy) 
+        
         self.menu.add_cascade(label='File', menu=filemenu)
         
+
+        editmenu = tk.Menu(self)
+        editmenu.add_command(label='Undo (latest ROI)')
+        editmenu.add_separator()
+        editmenu.add_command(label='Global settings', command=self.open_settings)
+        self.menu.add_cascade(label='Edit', menu=editmenu)
+
         viewmenu = tk.Menu(self)
-        viewmenu.add_command(label='Show controls', command=self.toggle_controls)
+        viewmenu.add_command(label='Show image controls', command=self.toggle_controls)
         self.menu.add_cascade(label='View', menu=viewmenu)
         
+        batchmenu = tk.Menu(self)
+        batchmenu.add_command(label='Batch measure & save all', command=self.batch_process)
+        batchmenu.add_separator()
+        batchmenu.add_command(label='Reprocess old', command=self.recalculate_old)
+        batchmenu.add_command(label='Replot heatmap', command=self.replot_heatmap)
+ 
+        self.menu.add_cascade(label='Batch', menu=batchmenu)
+
         toolmenu = tk.Menu(self)
         toolmenu.add_command(label='Heatmap tool', command=print)
         self.menu.add_cascade(label='Tools', menu=toolmenu)
@@ -190,10 +208,10 @@ class MovemeterTkGui(tk.Frame):
         self.opview.grid(row=0, column=2, sticky='NSWE')
         
         self.tabs = Tabs(self.opview,
-                ['Style', 'Grid creation options', 'Preprocessing', 'Measurement parameters'],
+                ['Style', 'ROI creation', 'Preprocessing', 'Motion analysis'],
                 draw_frame = True)
         self.tabs.grid(row=0, column=1, columnspan=2, sticky='NSWE')
-        
+        self.tabs.set_page(1) 
        
         self.styleview = self.tabs.tabs[0]
         self.styleview.columnconfigure(2, weight=1)
@@ -367,20 +385,6 @@ class MovemeterTkGui(tk.Frame):
         self.export_name.grid(row=4, column=2)
         
 
-        self.batch_button = tk.Button(self.opview, text='Batch measure&save all',
-                command=self.batch_process)
-        self.batch_button.grid(row=5, column=1)
-                
-        self.batch_name = tk.Entry(self.opview, width=50)
-        self.batch_name.insert(0, "batch_name")
-        self.batch_name.grid(row=5, column=2)
-        
-        self.batch_tickboxes = TickboxFrame(self.opview, ['fill_maxgrid'],
-                fancynames=['Fill maxgrid'])
-        self.batch_tickboxes.grid(row=6, column=1, columnspan=2)
-
-
-
         # Images view: Image looking and ROI selection
         # -------------------------------------------------
         self.imview = tk.LabelFrame(self, text='Images and ROI')
@@ -457,6 +461,10 @@ class MovemeterTkGui(tk.Frame):
         if fs:
             self.fs = fs
             self.fs_button.configure(text='fs = {} Hz'.format(self.fs))
+
+
+    def open_settings(self):
+        raise NotImplementedError
 
 
     def open_directory(self, directory=None):
@@ -562,6 +570,9 @@ class MovemeterTkGui(tk.Frame):
             if not directory:
                 return None
         
+        if not self._ask_batchname():
+            return None
+ 
         self.exit = False
         for root, dirs, fns in os.walk(directory):
             
@@ -581,7 +592,7 @@ class MovemeterTkGui(tk.Frame):
 
                 self.measure_movement()
 
-                self.export_results(batch_name=self.batch_name.get())
+                self.export_results(batch_name=self.batch_name)
 
         self.set_status('Results recalculated :)')
 
@@ -595,6 +606,9 @@ class MovemeterTkGui(tk.Frame):
             if not directory:
                 return None
         
+        if not self._ask_batchname():
+            return None
+ 
         self.exit = False
         for root, dirs, fns in os.walk(directory):
             
@@ -612,23 +626,41 @@ class MovemeterTkGui(tk.Frame):
                 self.calculate_heatmap()
                 self.change_heatmap(1)
 
-                self.export_results(batch_name=self.batch_name.get())
+                self.export_results(batch_name=self.batch_name)
 
         self.set_status('Heatmaps replotted :)')
 
+    
+    def _ask_batchname(self):
+        name = simpledialog.askstring('Batch name', 'Name new folder')
+        if name:
+            self.batch_name = name
+            return True
+        else:
+            return False
 
-    def batch_process(self):
+
+    def batch_process(self, fill_maxgrid=False):
+        '''
+        fill_maxgrid : bool
+            If True, ignore current ROIs and fill a full frame grid
+            using the current slider options.
+        '''
+
+        if not self._ask_batchname():
+            return None
+        
         self.exit = False
         for folder in self.folders:
             if self.exit:
                 break
             self.folder_selected(folder)
             
-            if self.batch_tickboxes.states['fill_maxgrid']:
+            if fill_maxgrid:
                 self.fill_grid()
             
             self.measure_movement()
-            self.export_results(batch_name=self.batch_name.get())
+            self.export_results(batch_name=self.batch_name)
 
 
     def measure_movement(self):
