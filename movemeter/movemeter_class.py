@@ -9,10 +9,19 @@ cv2.TM_CCOEFF_NORMED). Also other backends are supported (but currently, not imp
 import os
 import time
 import multiprocessing
+import warnings
 
 import exifread
 import numpy as np
 import cv2
+
+try:
+    # Optional dependency to scipy, used only for preblurring
+    # (Movemeter.preblur)
+    import scipy.ndimage
+except ImportError:
+    scipy = None
+    warnings.warn('cannot import scipy.ndimage; Movemeter preblur not available')
 
 
 class Movemeter:
@@ -60,12 +69,15 @@ class Movemeter:
     print_callback : callable
         Print function to convey the progress.
         By default, this is the built-in print function.
-
+    preblur : False or float
+        Standard deviation of the Gaussian blur kernel, see scipy.ndimage.gaussian_filter
+        Requires an optional dependency to scipy.
     '''    
 
     def __init__(self, upscale=1, cc_backend='OpenCV', imload_backend='tifffile',
             absolute_results=False, tracking_rois=False, compare_to_first=True,
-            subtract_previous=False, multiprocess=False, print_callback=print):
+            subtract_previous=False, multiprocess=False, print_callback=print,
+            preblur=0):
         
         # See Class docstring for documentation
 
@@ -79,7 +91,7 @@ class Movemeter:
         self.subtract_previous = subtract_previous
         self.multiprocess = multiprocess
         self.print_callback = print_callback
-
+        self.preblur=preblur
 
         # IMAGE LOADING BACKEND
         if imload_backend == 'OpenCV':
@@ -153,6 +165,9 @@ class Movemeter:
             image[i] -= np.min(image[i])
             image[i] = (image[i] / np.max(image[i])) * 1000
             image[i] = image[i].astype(np.float32)
+            
+            if self.preblur and scipy:
+                image[i] = scipy.ndimage.gaussian_filter(image[i], sigma=self.preblur)
 
         return image
 
