@@ -196,12 +196,27 @@ class MovemeterTkGui(tk.Frame):
         
        
         self.styleview = self.tabs.tabs[0]
+        self.styleview.columnconfigure(2, weight=1)
         
-        self.colormap_label = tk.Label(self.styleview, text='current colormap')
+        self.colormap_label = tk.Label(self.styleview, text='Colormap')
         self.colormap_label.grid(row=1, column=1)
-        self.colormap_selection = tk.Button(self.styleview, text='Select colormap...',
+        self.colormap_selection = tk.Button(self.styleview, text=self.colors.get_cmap().name,
                 command=self.open_colormap_selection)
         self.colormap_selection.grid(row=1, column=2)
+        
+        tk.Label(self.styleview, text='Line width').grid(row=2, column=1)
+        self.patch_lw_slider = tk.Scale(self.styleview, from_=0, to_=10,
+                orient=tk.HORIZONTAL)
+        self.patch_lw_slider.set(1)
+        self.patch_lw_slider.grid(row=2, column=2, sticky='NSWE')
+        
+        tk.Label(self.styleview, text='Fill strength').grid(row=3, column=1)
+        self.patch_fill_slider = tk.Scale(self.styleview, from_=0, to=100,
+                orient=tk.HORIZONTAL)
+        self.patch_fill_slider.grid(row=3, column=2, sticky='NSWE')
+        self.patch_fill_slider.set(40)
+
+
 
         self.roiview = self.tabs.tabs[1]
         self.roiview.columnconfigure(2, weight=1)
@@ -655,9 +670,16 @@ class MovemeterTkGui(tk.Frame):
         top.mainloop()
 
     def apply_colormap(self, colormap):
+        
+        if hasattr(colormap, 'colors'):
+            self.colors.set_clim(0, len(colormap.colors))
+        else:
+            self.colors.set_clim(0, 10)
+
         self.colors.set_cmap(colormap)
-        self.colormap_label.config(text=colormap.name)
+        self.colormap_selection.config(text=colormap.name)
         self.update_grid()
+
 
     def undo(self):
         '''
@@ -687,7 +709,7 @@ class MovemeterTkGui(tk.Frame):
 
 
     def nroi_slider_callback(self, N=None):
-        self.colors.set_clim(0, self.nroi_slider.get())
+        pass
 
     def update_roitype_selection(self):
 
@@ -828,11 +850,15 @@ class MovemeterTkGui(tk.Frame):
             
             color = self.colors.to_rgba(i_roigroup%self.colors.get_clim()[1])
             
-            patches = []
+            patches = [] 
+            lw = self.patch_lw_slider.get()
+            fill = self.patch_fill_slider.get()/100
+            fcolor = (color[0], color[1], color[2], color[3]*fill)
             for roi in rois[:3000]:
+
                 patch = matplotlib.patches.Rectangle((float(roi[0]), float(roi[1])),
-                        float(roi[2]), float(roi[3]), fill=True, edgecolor=color, facecolor=color,
-                        alpha=1/3)
+                        float(roi[2]), float(roi[3]), fill=True, edgecolor=color, facecolor=fcolor,
+                        lw=lw)
                 patches.append(patch)
                 ax.add_patch(patch)
             
