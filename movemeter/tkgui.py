@@ -1103,13 +1103,15 @@ class MovemeterTkGui(tk.Frame):
         firstframemax = np.max(self.heatmap_images[0:3], axis=0)
         image[firstframemax > float(self.heatmap_firstcap_slider.get())] = 0
         
-        image = image / float(self.heatmapcap_slider.get())
-
+        #image = image / float(self.heatmapcap_slider.get())
+        image = image / np.max(image)
+    
         if only_return_image:
             return image
         else:
             self.heatmap_plotter.imshow(image, normalize=False)
-    
+   
+
     def set_settings(self, settings):
         for key, value in settings.items():
             if key == 'block_size':
@@ -1262,6 +1264,10 @@ class MovemeterTkGui(tk.Frame):
             fn = os.path.join(save_directory, 'movements_{}_rg{}.csv'.format(zipsavename, i_roigroup))
             
             displacements = self.get_displacements(results)
+            
+            if not displacements:
+                continue
+
             dm_displacement = self.get_destructive_displacement_mean(results)
 
             with open(fn, 'w') as fp:
@@ -1284,7 +1290,7 @@ class MovemeterTkGui(tk.Frame):
         with open(os.path.join(save_directory, 'summary_desctructive_{}.csv'.format(zipsavename)), 'w') as fp:
             writer = csv.writer(fp,  delimiter=',')
 
-            writer.writerow(['time (s)'] +['roi group (pixels)'.format(i) for i in range(len(means)-1)])
+            writer.writerow(['time (s)'] +['roi group {} (pixels)'.format(i) for i in range(len(means)-1)])
 
             for i in range(len(means[0])):
                 row = [m[i] for m in means]
