@@ -1,4 +1,5 @@
 <h1>Movemeter</h1>
+
 Movemeter is a motion analysis tool to quantify how much arbitrary
 *image features* move in pixels over time. It currently uses template matching
 from the OpenCV library (cv2.matchTemplate)
