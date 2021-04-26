@@ -158,7 +158,7 @@ def grid_arc_from_points(gridpos, blocksize, step=1, points=None, circle=None, l
 
 
 def grid_radial_line_from_points(gridpos, blocksize, step=1,
-        points=None, circle=None,
+        points=None, circle=None, line_len=0,
         i_segment=0, n_segments=10):
     '''
     Giving either the points or the circle parameters, create radial lines or
@@ -169,7 +169,7 @@ def grid_radial_line_from_points(gridpos, blocksize, step=1,
         cp, R = circle
     
     blocks = gen_grid(gridpos, blocksize, step=step)
-    blocks = _square_to_ellipse(blocks, R, R, cp, 0)
+    blocks = _square_to_ellipse(blocks, R, R, cp, R-line_len)
     
     # blocks angles
     angles = [math.atan2(y-cp[1], x-cp[0])+math.pi for x,y in _get_cps(blocks)]

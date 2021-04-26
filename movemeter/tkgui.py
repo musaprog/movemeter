@@ -273,16 +273,28 @@ class MovemeterTkGui(tk.Frame):
         self.nroi_label = tk.Label(self.roiview, text='Count')
         self.nroi_label.grid(row=6, column=1)
         self.nroi_label.grid_remove()
-        self.nroi_slider = tk.Scale(self.roiview, from_=1, to=32,
+        self.nroi_slider = tk.Scale(self.roiview, from_=1, to=128,
                 orient=tk.HORIZONTAL, resolution=1,
                 command=self.nroi_slider_callback)
         self.nroi_slider.grid(row=6, column=2, sticky='NSWE')
         self.nroi_slider.grid_remove()
 
+        self.radial_len_label = tk.Label(self.roiview, text='Radial line length')
+        self.radial_len_label.grid(row=7, column=1)
+        self.radial_len_label.grid_remove()
+        self.radial_len_slider = tk.Scale(self.roiview, from_=1, to=1024,
+                orient=tk.HORIZONTAL, resolution=1)
+        self.radial_len_slider.grid(row=7, column=2, sticky='NSWE')
+        self.radial_len_slider.grid_remove()
+
+
+
+
+
         self.roi_buttons = ButtonsFrame(self.roiview, ['Update', 'Max grid', 'Clear', 'Undo', 'New group'],
                 [self.update_grid, self.fill_grid, self.clear_selections, self.undo, self.new_group])
 
-        self.roi_buttons.grid(row=7, column=1, columnspan=2)
+        self.roi_buttons.grid(row=8, column=1, columnspan=2)
         
 
         self.preview = self.tabs.tabs[2]
@@ -712,15 +724,23 @@ class MovemeterTkGui(tk.Frame):
         pass
 
     def update_roitype_selection(self):
+        
+        selected = self.roitype_selection.ticked[0] 
 
-        if self.roitype_selection.ticked[0] in ['concentric_arcs_from_points', 'radial_lines_from_points']:
+        if selected in ['concentric_arcs_from_points', 'radial_lines_from_points']:
             self.nroi_label.grid()
             self.nroi_slider.grid()
-            self.nroi_slider_callback()
+
+            if selected == 'radial_lines_from_points':
+                self.radial_len_label.grid()
+                self.radial_len_slider.grid()
+
         else:
             self.nroi_label.grid_remove()
             self.nroi_slider.grid_remove()
-            self.colors.set_clim(0, 10)
+
+            self.radial_len_label.grid_remove()
+            self.radial_len_slider.grid_remove()
 
         self.change_image()
 
@@ -771,12 +791,13 @@ class MovemeterTkGui(tk.Frame):
             params['distance'] = self.distance_slider.get()
             params['relstep'] = float(self.overlap_slider.get())/params['blocksize'][0]
             params['count'] = self.nroi_slider.get()
+            params['rlen'] = self.radial_len_slider.get()
             params['i_roigroup'] = int(self.current_roi_group)
             params['mode'] = self.drawmode_selection.ticked[0]
 
        
-        roitype, block_size, distance, rel_step, i_roigroup, count, mode = [
-                params[key] for key in ['roitype','blocksize','distance','relstep', 'i_roigroup', 'count', 'mode']]
+        roitype, block_size, distance, rel_step, i_roigroup, count, mode, rlen = [
+                params[key] for key in ['roitype','blocksize','distance','relstep', 'i_roigroup', 'count', 'mode', 'rlen']]
 
         if user_made:
             self.selections.append( (x1, y1, x2, y2, params) )   
@@ -816,7 +837,7 @@ class MovemeterTkGui(tk.Frame):
                             circle=recursion_data, lw=distance)
                 elif roitype == 'radial_lines_from_points':
                     rois = grid_radial_line_from_points((0,0,*reversed(self.image_shape)), block_size, step=rel_step,
-                            circle=recursion_data,
+                            circle=recursion_data, line_len=rlen,
                             i_segment=self.current_roi_group, n_segments=count)
 
             else:
