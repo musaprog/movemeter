@@ -1,14 +1,18 @@
 <h1>Movemeter</h1>
 Movemeter is a motion analysis tool to quantify how much arbitrary image
 features move in pixels over time. It currently uses template matching
-from the [OpenCV library](https://opencv.org/)
-([cv2.matchTemplate](https://docs.opencv.org/master/d4/dc6/tutorial_py_template_matching.html))
+from the
+[OpenCV library](https://opencv.org/)
+[cv2.matchTemplate](https://docs.opencv.org/master/d4/dc6/tutorial_py_template_matching.html)
 on upscaled images to reach subpixel resolution.
 
 The features are selected by drawing regions of interest (ROIs),
 which consist of small rectangular windows, on the images.
-These analysis windows can be set to 1) follow the selected feature
-to quantify how much and where it moves or 2) to stay stationary
+These analysis windows can be set to
+
+1. follow the selected feature
+to quantify how much and where it moves
+2. to stay stationary
 to quantify overal movement within that image area.
 
 Results are reported in the units of pixels in x and y,
