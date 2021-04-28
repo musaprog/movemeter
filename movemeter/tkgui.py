@@ -156,7 +156,7 @@ class MovemeterTkGui(tk.Frame):
         
 
         editmenu = tk.Menu(self)
-        editmenu.add_command(label='Undo (latest ROI)')
+        editmenu.add_command(label='Undo (latest ROI)', command=self.undo)
         editmenu.add_separator()
         editmenu.add_command(label='Global settings', command=self.open_settings)
         self.menu.add_cascade(label='Edit', menu=editmenu)
