@@ -388,7 +388,10 @@ class MovemeterTkGui(tk.Frame):
         # Images view: Image looking and ROI selection
         # -------------------------------------------------
         self.imview = tk.LabelFrame(self, text='Images and ROI')
-        self.imview.grid(row=1, column=1)
+        self.imview.grid(row=1, column=1, sticky='NSWE')
+        
+        self.imview.columnconfigure(1, weight=1)
+        self.imview.rowconfigure(3, weight=1)
 
         self.imview_buttons = ButtonsFrame(self.imview,
                 ['Exclude image', 'Exclude index'],
@@ -403,7 +406,7 @@ class MovemeterTkGui(tk.Frame):
         self.image_slider.grid(row=2, column=1, sticky='NSWE')
 
         self.images_plotter = CanvasPlotter(self.imview)
-        self.images_plotter.grid(row=3, column=1) 
+        self.images_plotter.grid(row=3, column=1, sticky='NSWE') 
         
         ax = self.images_plotter.ax
         self.excludetext = ax.text(0.5, 0.5, '', transform=ax.transAxes,
@@ -415,18 +418,23 @@ class MovemeterTkGui(tk.Frame):
         # ------------------------------------
         
         self.tabs = Tabs(self, ['Displacement', 'Heatmap'])
-        self.tabs.grid(row=1, column=2)
+        self.tabs.grid(row=1, column=2, sticky='NSWE')
         self.resview = self.tabs.pages[0]
         self.heatview = self.tabs.pages[1]
 
         #self.resview = tk.LabelFrame(self, text='Results')
         #self.resview.grid(row=1, column=2)
-       
+        
+        self.resview.rowconfigure(2, weight=1)
+        self.resview.columnconfigure(1, weight=1)
+        self.heatview.columnconfigure(2, weight=1)
+        self.heatview.rowconfigure(2, weight=1)
+
         self.results_plotter = CanvasPlotter(self.resview)
-        self.results_plotter.grid(row=2, column=1) 
+        self.results_plotter.grid(row=2, column=1, sticky='NSWE')
         
         self.heatmap_plotter = CanvasPlotter(self.heatview)
-        self.heatmap_plotter.grid(row=2, column=2) 
+        self.heatmap_plotter.grid(row=2, column=2, sticky='NSWE') 
         
         self.heatmap_slider = tk.Scale(self.heatview, from_=0, to=0,
             orient=tk.HORIZONTAL, command=self.change_heatmap)
@@ -446,7 +454,10 @@ class MovemeterTkGui(tk.Frame):
         self.status = tk.Label(self, text='Nothing to do')
         self.status.grid(row=2, column=1, columnspan=2)
 
-        #self.open_directory(directory='/home/joni/smallbrains-nas1/array1/xray_ESRF2/flattened_ESRF2/fly4/fly4/temp_flattened_head_SI1500/')
+        self.columnconfigure(1, weight=1)    
+        self.columnconfigure(2, weight=1)
+        self.rowconfigure(1, weight=1)
+
 
     def stop():
         self.exit=True
@@ -1371,7 +1382,9 @@ def main():
     root = tk.Tk()
     root.title('Movemeter - Tkinter GUI - {}'.format(__version__))
     gui = MovemeterTkGui(root)
-    gui.grid()
+    gui.grid(row=1, column=1, sticky='NSWE')
+    root.columnconfigure(1, weight=1)
+    root.rowconfigure(1, weight=1)
     root.mainloop()
 
 
