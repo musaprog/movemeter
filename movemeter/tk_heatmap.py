@@ -36,7 +36,7 @@ class HeatmapTool(tk.Frame):
         
 
         # HEATMAP TYPE
-        self.type_frame = tk.LabelFrame(text='Heatmap type')
+        self.type_frame = tk.LabelFrame(self, text='Heatmap type')
         self.type_frame.grid(row=1, column=0, sticky='NSWE')
         
         self.map_types = ['speed', 'displacement', 'direction']
@@ -52,7 +52,7 @@ class HeatmapTool(tk.Frame):
             button.grid(column=i_button, row=1)
 
         # Modify hetmaps showing sliders
-        self.filter_frame = tk.LabelFrame(text='Filtering options')
+        self.filter_frame = tk.LabelFrame(self, text='Filtering options')
         self.filter_frame.grid(row=3, column=0, sticky='NSWE')
         self.filter_frame.columnconfigure(2, weight=1)
 
@@ -149,8 +149,8 @@ class HeatmapStandalone(tk.Frame):
             self.savedir = os.path.dirname(fn)
             break    
             
-        
-        self.heatmap_tool.set_data(image_shape, rois, movements)
+        # FIXME Make roi_group selectable (now just the first, [0])
+        self.heatmap_tool.set_data(image_shape, rois[0], movements[0])
         self.heatmap_tool.update_heatmaps()
 
 
@@ -169,18 +169,21 @@ class HeatmapStandalone(tk.Frame):
             fig.savefig(os.path.join(savedir, '{:03d}.jpg'.format(i_image)), dpi=600)
 
 
-
 def main(): 
     root = tk.Tk()
-    root.title('Heatmap Inspection - Tkinter GUI - {}'.format(__version__))
+    title = 'Heatmap tool - {}'.format(__version__)
+    root.title(title)
     gui = HeatmapStandalone(root)
     gui.grid()
     root.mainloop()
 
-
-def popup(tk_root):
+    
+def popup(tk_parent):
     top = tk.Toplevel()
-    gui = HeatmapStandalone(root)
+    title = 'Heatmap tool'
+    top.title(title)
+    gui = HeatmapStandalone(top)
+    gui.grid()
 
 
 if __name__ == "__main__":

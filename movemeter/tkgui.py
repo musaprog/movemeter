@@ -41,7 +41,7 @@ from movemeter.roi import (
         _workout_circle,
         )
 from movemeter import Movemeter
-
+from movemeter.tk_heatmap import popup as open_httool
 
 
 class ColormapSelector(tk.Frame):
@@ -174,7 +174,7 @@ class MovemeterTkGui(tk.Frame):
         self.menu.add_cascade(label='Batch', menu=batchmenu)
 
         toolmenu = tk.Menu(self)
-        toolmenu.add_command(label='Heatmap tool', command=print)
+        toolmenu.add_command(label='Heatmap tool', command=lambda: open_httool(self))
         self.menu.add_cascade(label='Tools', menu=toolmenu)
         
 
