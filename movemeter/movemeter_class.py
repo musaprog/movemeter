@@ -66,6 +66,7 @@ class Movemeter:
     multiprocess : int
         If 0 then no multiprocessing. Otherwise the number of parallel processes.
         Note that there may be some multiprocessing already at the cc_backend level.
+        If used, avoid adding any non-pickable or heavy attributes to this class objects.
     print_callback : callable
         Print function to convey the progress.
         By default, this is the built-in print function.
@@ -94,13 +95,15 @@ class Movemeter:
         self.preblur=preblur
 
         # IMAGE LOADING BACKEND
+        self.imload_args = []
         if imload_backend == 'OpenCV':
             import cv2
-            self.imload = lambda fn: cv2.imread(fn, -1)
+            self.imload = cv2.imread
+            self.imload_args.append(-1)
 
         elif imload_backend == 'tifffile':
             import tifffile
-            self.imload = lambda fn: tifffile.imread(fn)
+            self.imload = tifffile.imread
 
         elif callable(imload_backend):
             self.imload = imload_backend 
@@ -150,7 +153,7 @@ class Movemeter:
         if type(fn) == np.ndarray:
             pass
         else:
-            image = self.imload(fn)
+            image = self.imload(fn, *self.imload_args)
         
         # Check if the image file is actually a stack of many images.
         if len(image.shape) == 3:
@@ -409,7 +412,22 @@ class Movemeter:
             target = self._measure_movement
 
         if self.multiprocess:
-            
+        
+            # Temporary EOFError fix:
+            # When starting new processeses the whole
+            # Movemeter class ends up pickeld. Because print_callback in tkgui
+            # is set to some tkinter object, the whole tkinter session gets
+            # pickled. On Windows for some reason, this cannot be pickeld.
+            #
+            # While this works now, this is not a good fix because if anyone
+            # adds something unpickable to a Movemeter object, the same
+            # happens again.
+            #
+            print_callback = self.print_callback
+            self.print_callback = None
+            # -----------------------------
+
+
             # Create multiprocessing manager and a inter-processes
             # shared results_list
             manager = multiprocessing.Manager()
@@ -439,18 +457,23 @@ class Movemeter:
 
             # Wait until all workers get ready
             for i_worker, worker in enumerate(workers):
-                self.print_callback('Waiting worker #{} to finish'.format(i_worker+1))
+                print_callback('Waiting worker #{} to finish'.format(i_worker+1))
                 while worker.is_alive():
                     if messages:
-                        self.print_callback(messages[-1])
+                        print_callback(messages[-1])
                     time.sleep(1)
                 worker.join()
 
             # Combine workers' results
-            self.print_callback('Combining results from different workers')
+            print_callback('Combining results from different workers')
             results = []
             for worker_results in results_list:
                 results.extend(worker_results)
+
+            # FIX EOFError, see above
+            self.print_callback = print_callback
+            # ---------------
+
 
         else:
             results = target(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement)
