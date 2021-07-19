@@ -90,6 +90,84 @@ class ColormapSelector(tk.Frame):
         self._callback(self.colormaps[self._current])
 
 
+class MovemeterSettings(tk.Frame):
+    '''
+    Movemeter settings semi-automatically inspected from
+    the Movemeter.__init__ method.
+
+    Use get_current method to retrive the setting dictionary.
+
+    Attributes
+    ----------
+    tickboxes : object
+        tk_steroids TickboxFrame.
+    '''
+    def __init__(self, tk_parent):
+        '''
+        tk_parent       Tkinter parent widget
+        '''
+        tk.Frame.__init__(self, tk_parent)
+        self.columnconfigure(2, weight=1)
+
+        # Movemeter True/False options; Automatically inspect from Movemeter.__init__
+        moveinsp = inspect.getfullargspec(Movemeter.__init__)
+
+        moveargs = []
+        movedefaults = []
+        for i in range(1, len(moveinsp.args)):
+            arg = moveinsp.args[i]
+            default = moveinsp.defaults[i-1]
+            if isinstance(default, bool) and arg not in ['multiprocess']:
+                moveargs.append(arg)
+                movedefaults.append(default)
+        
+
+        # GUI elements next
+        # First preprocessing options
+        tk.Label(self, text='Gaussian blur').grid(row=2, column=1)
+        self.blur_slider = tk.Scale(self, from_=0, to=32, orient=tk.HORIZONTAL)
+        self.blur_slider.set(0)
+        self.blur_slider.grid(row=2, column=2, sticky='NSWE')
+
+        # True/false - motion analysis options
+        self.tickboxes = TickboxFrame(self, moveargs, defaults=movedefaults)
+        self.tickboxes.grid(row=3, column=1, columnspan=2)
+
+        # Numerical value - motion analysis options
+        tk.Label(self, text='Maximum movement').grid(row=4, column=1)
+        self.maxmovement_slider = tk.Scale(self, from_=1, to=100,
+                orient=tk.HORIZONTAL)
+        self.maxmovement_slider.set(10)
+        self.maxmovement_slider.grid(row=4, column=2, sticky='NSWE')
+
+        tk.Label(self, text='Upscale').grid(row=5, column=1)
+        self.upscale_slider = tk.Scale(self, from_=0.1, to=10,
+                orient=tk.HORIZONTAL, resolution=0.1)
+        self.upscale_slider.set(5)
+        self.upscale_slider.grid(row=5, column=2, sticky='NSWE')
+
+        tk.Label(self, text='Parallel processes').grid(row=6, column=1)
+        self.cores_slider = tk.Scale(self, from_=1, to=os.cpu_count(),
+                orient=tk.HORIZONTAL)
+        self.cores_slider.set(max(1, int(os.cpu_count()/2)))
+        self.cores_slider.grid(row=6, column=2, sticky='NSWE')
+
+
+    def get_current(self):
+        '''
+        Returns a dictionary of the current settings that can be directly
+        passed to the Movemeter.__init__ method.
+        '''
+        settings = {'upscale': float(self.upscale_slider.get()),
+                'max_movement': int(self.maxmovement_slider.get()),
+                'multiprocess': int(self.cores_slider.get())}
+
+        if settings['multiprocess'] == 1:
+            settings['multiprocess'] = False
+
+        return {**self.tickboxes.states, **settings}
+
+
 
 class MovemeterTkGui(tk.Frame):
     '''
@@ -215,7 +293,7 @@ class MovemeterTkGui(tk.Frame):
         self.opview.grid(row=0, column=2, sticky='NSWE')
         
         self.tabs = Tabs(self.opview,
-                ['Style', 'ROI creation', 'Preprocessing', 'Motion analysis'],
+                ['Style', 'ROI creation', 'Motion analysis'],
                 draw_frame = True)
         self.tabs.grid(row=0, column=1, columnspan=2, sticky='NSWE')
         self.tabs.set_page(1) 
@@ -321,58 +399,10 @@ class MovemeterTkGui(tk.Frame):
 
         self.roi_buttons.grid(row=8, column=1, columnspan=2)
         
-
-        self.preview = self.tabs.tabs[2]
-        self.preview.columnconfigure(2, weight=1)
-        tk.Label(self.preview, text='Gaussian blur').grid(row=2, column=1)
-        self.blur_slider = tk.Scale(self.preview, from_=0, to=32,
-                orient=tk.HORIZONTAL)
-        self.blur_slider.set(0)
-        self.blur_slider.grid(row=2, column=2, sticky='NSWE')
-
-
-        self.parview = self.tabs.tabs[3]
-        self.parview.columnconfigure(2, weight=1)
-
-
-        # Movemeter True/False options; Automatically inspect from Movemeter.__init__
-        moveinsp = inspect.getfullargspec(Movemeter.__init__)
-
-        moveargs = []
-        movedefaults = []
-        for i in range(1, len(moveinsp.args)):
-            arg = moveinsp.args[i]
-            default = moveinsp.defaults[i-1]
-            if isinstance(default, bool) and arg not in ['multiprocess']:
-                moveargs.append(arg)
-                movedefaults.append(default)
-        
-        self.movemeter_tickboxes = TickboxFrame(self.parview, moveargs,
-                defaults=movedefaults)
-        self.movemeter_tickboxes.grid(row=0, column=1, columnspan=2)
-
-
-        tk.Label(self.parview, text='Maximum movement').grid(row=1, column=1)
-        self.maxmovement_slider = tk.Scale(self.parview, from_=1, to=100,
-                orient=tk.HORIZONTAL)
-        self.maxmovement_slider.set(10)
-        self.maxmovement_slider.grid(row=1, column=2, sticky='NSWE')
-
-        tk.Label(self.parview, text='Upscale').grid(row=2, column=1)
-        self.upscale_slider = tk.Scale(self.parview, from_=0.1, to=10,
-                orient=tk.HORIZONTAL, resolution=0.1)
-        self.upscale_slider.set(5)
-        self.upscale_slider.grid(row=2, column=2, sticky='NSWE')
-
-
-        tk.Label(self.parview, text='CPU cores').grid(row=3, column=1)
-        self.cores_slider = tk.Scale(self.parview, from_=1, to=os.cpu_count(),
-                orient=tk.HORIZONTAL)
-        self.cores_slider.set(max(1, int(os.cpu_count()/2)))
-        self.cores_slider.grid(row=3, column=2, sticky='NSWE')
-
-
-        
+        self.parview = self.tabs.tabs[2]
+        self.parview.columnconfigure(1, weight=1)
+        self.movemeter_settings = MovemeterSettings(self.parview)
+        self.movemeter_settings.grid(column=1,sticky='NSWE')
 
         self.calculate_button = tk.Button(self.opview, text='Measure movement',
                 command=self.measure_movement)
@@ -710,21 +740,16 @@ class MovemeterTkGui(tk.Frame):
             print('Started roi measurements')
            
             self.results = []
-
-            cores = int(self.cores_slider.get())
-            if cores == 1:
-                cores = False
             
-            self.movemeter = Movemeter(upscale=float(self.upscale_slider.get()),
-                    multiprocess=cores, print_callback=self.set_status, preblur=self.blur_slider.get(),
-                    **self.movemeter_tickboxes.states)
+            self.movemeter = Movemeter(print_callback=self.set_status,
+                    **self.movemeter_settings.get_current())
            
             for rois in self.roi_groups:
                 # Set movemeted data
                 images = [self._included_image_fns()]
                 self.movemeter.set_data(images, [rois])
                 
-                self.results.append( self.movemeter.measure_movement(0, max_movement=int(self.maxmovement_slider.get()), optimized=True) )
+                self.results.append( self.movemeter.measure_movement(0, optimized=True) )
             
             self.plot_results()
 
@@ -1114,7 +1139,7 @@ class MovemeterTkGui(tk.Frame):
         
         step = int(self.overlap_slider.get())
         
-        max_movement = float(self.maxmovement_slider.get())
+        max_movement = float(self.movemeter_settings.maxmovement_slider.get())
 
         N = self._len_included_frames()
 
@@ -1230,13 +1255,10 @@ class MovemeterTkGui(tk.Frame):
         settings = {}
         settings['block_size'] = self.blocksize_slider.get()
         settings['block_distance'] = self.overlap_slider.get()
-        settings['maximum_movement'] = self.maxmovement_slider.get()
-        settings['upscale'] = self.upscale_slider.get()
-        settings['cpu_cores'] = self.cores_slider.get() 
+        settings['movemeter_settings'] = self.movemeter_settings.get_current()
         settings['export_time'] = str(datetime.datetime.now())
         settings['movemeter_version'] = __version__
         settings['exclude_images'] = self.exclude_images
-        settings['measurement_parameters'] = self.movemeter_tickboxes.states
 
         if self.images:
             settings['images_shape'] = self.image_shape
