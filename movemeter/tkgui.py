@@ -500,7 +500,7 @@ class MovemeterTkGui(tk.Frame):
         '''
         Use Movemeter to open image/video.
         '''
-        images = Movemeter(imload_backend='OpenCV')._imread(fn)
+        images = Movemeter()._imread(fn)
         return images
 
 
@@ -1037,7 +1037,7 @@ class MovemeterTkGui(tk.Frame):
             total_frames += frames
 
             if total_frames >= i_image:
-                return i_fn, frames - (total_frames - i_image)
+                return i_fn, frames - (total_frames - i_image) - 1
     
     def change_image(self, slider_value=None):
         
@@ -1112,7 +1112,7 @@ class MovemeterTkGui(tk.Frame):
         return [fn for i_fn, fn in enumerate(self.image_fns) if fn not in self.exclude_images and i_fn not in self.exclude_images]
     
     def _len_included_frames(self):
-        return sum([self.N_frames.get(fn) for fn in self._included_image_fns()])
+        return sum([self.N_frames.get(fn, 1) for fn in self._included_image_fns()])
 
     def calculate_heatmap(self):
         '''
