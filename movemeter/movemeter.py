@@ -76,14 +76,20 @@ class Movemeter:
     preblur : False or float
         Standard deviation of the Gaussian blur kernel, see scipy.ndimage.gaussian_filter
         Requires an optional dependency to scipy.
+    max_movement : None or int
+        If not None, in pixels, the maximum expected per-frame (compare_to_first=False)
+        or total (compare_to_first=True) motion analysis result in pixel.
+        This cropping the source image can increase performance a lot but too small
+        values will truncated and underestimated results.
     '''    
 
     def __init__(self, upscale=1, cc_backend='OpenCV', imload_backend='tifffile',
             absolute_results=False, tracking_rois=False, compare_to_first=True,
             subtract_previous=False, multiprocess=False, print_callback=print,
-            preblur=0):
-        
-        # See Class docstring for documentation
+            preblur=0, max_movement=None):
+        '''
+        See Class docstring for documentation
+        '''
 
         # Set the options given in constructor to same name attributes
         self.upscale = upscale
@@ -96,6 +102,7 @@ class Movemeter:
         self.multiprocess = multiprocess
         self.print_callback = print_callback
         self.preblur=preblur
+        self.max_movement = max_movement
 
         # IMAGE LOADING BACKEND
         self.imload_args = []
@@ -395,7 +402,7 @@ class Movemeter:
             Analyse stack with index stack_i (order according what set to set_data method)
         max_movement : int
             Speed up the computation by specifying the maximum translation between
-            subsequent frames, in pixels.
+            subsequent frames, in pixels. If not specified use self.max_movement
         optimized : bool
             Experimental, if true use reversed roi/image looping order.
 
@@ -406,6 +413,8 @@ class Movemeter:
             where results_ROIj_for_stack_i = [movement_points_in_X, movement_points_in_Y]
 
         '''
+        if not max_movement:
+            max_movement = self.max_movement
 
         start_time = time.time()
         self.print_callback('Starting to analyse stack {}/{}'.format(stack_i+1, len(self.stacks)))
