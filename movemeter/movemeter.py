@@ -24,6 +24,9 @@ except ImportError:
     warnings.warn('cannot import scipy.ndimage; Movemeter preblur not available')
 
 
+from movemeter.movie import MovieIterator
+
+
 class Movemeter:
     '''Analysing translational movement from time series of images.
 
@@ -136,7 +139,6 @@ class Movemeter:
         raise NotImplementedError('_find_location (a method in Movemeter class) needs to be overridden by the selected cc_backend implementation.')
     
 
-
     def _imread(self, fn):
         '''
         Wrapper for self.imload (that depends on the image load backed).
@@ -153,8 +155,12 @@ class Movemeter:
         if type(fn) == np.ndarray:
             pass
         else:
-            image = self.imload(fn, *self.imload_args)
-        
+            if fn.endswith('.mp4'):
+                iterator = MovieIterator(fn, post_process=self._imread)
+                return iterator
+            else:
+                image = self.imload(fn)
+
         # Check if the image file is actually a stack of many images.
         if len(image.shape) == 3:
             pass 

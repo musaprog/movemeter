@@ -95,9 +95,13 @@ class MovemeterTkGui(tk.Frame):
     '''
     Class documentation TODO.
     
-    
+    ATTRIBUTES
+    -----------
     exclude_images : list of integers and/or strings
         Images to skip by file name or by index
+    filename_extensions : tuple
+        Expected filename extensions
+
     '''
 
     def __init__(self, tk_parent):
@@ -130,6 +134,9 @@ class MovemeterTkGui(tk.Frame):
         self.colors = matplotlib.cm.ScalarMappable(cmap=matplotlib.cm.tab10)
         self.colors.set_clim(0,10)
         
+        self.filename_extensions = ('.tiff', '.tif', '.mp4')
+        self.N_frames = {}
+
 
         # Top menu
         # --------------------------------
@@ -457,6 +464,14 @@ class MovemeterTkGui(tk.Frame):
         self.columnconfigure(1, weight=1)    
         self.columnconfigure(2, weight=1)
         self.rowconfigure(1, weight=1)
+    
+
+    def _imread(self, fn):
+        '''
+        Use Movemeter to open image/video.
+        '''
+        images = Movemeter(imload_backend='OpenCV')._imread(fn)
+        return images
 
 
     def stop():
@@ -501,10 +516,14 @@ class MovemeterTkGui(tk.Frame):
             with open(os.path.join(MOVEDIR, 'last_directory.txt'), 'w') as fp:
                 fp.write(directory)
             
-            # Check if folder contains any images; If not, append
+            # Check if folder contains any images; If not and it contains folders, append
             # The folders in this folder
+
+            contents = os.listdir(directory)
+            noimages = [fn for fn in os.listdir(directory) if fn.endswith(self.filename_extensions)] == []
+            has_subfolders = any([os.path.isdir(os.path.join(directory, fn)) for fn in contents])
             
-            if [fn for fn in os.listdir(directory) if fn.endswith('.tif') or fn.endswith('.tiff')] == []:
+            if noimages and has_subfolders:
                 directories = [os.path.join(directory, fn) for fn in os.listdir(directory)]
             else:
                 directories = [directory]
@@ -530,14 +549,26 @@ class MovemeterTkGui(tk.Frame):
 
         print('Selected folder {}'.format(folder))
 
-        self.image_fns = [os.path.join(folder, fn) for fn in os.listdir(folder) if fn.endswith('.tiff') or fn.endswith('.tif')]
-        self.image_fns.sort()
+        self.image_fns = [os.path.join(folder, fn) for fn in os.listdir(folder) if fn.endswith(self.filename_extensions)]
 
-        self.images = [None for fn in self.image_fns]
+        self.image_fns.sort()
+        
+
+        self.N_frames = {}
+        total_frames = 0
+        for fn in self.image_fns:
+            if fn.endswith('.mp4'):
+                self.N_frames[fn] = len(self._imread(fn))
+                total_frames += self.N_frames[fn] - 1
+
+        N_images = len(self.image_fns) + total_frames
+        
+
+        self.images = [None for i in range(N_images)]
         self.mask_image = None
+   
 
         self.change_image(slider_value=1)
-        N_images = len(self.image_fns)
         self.image_slider.config(from_=1, to=N_images)
        
         self.export_name.delete(0, tk.END)
@@ -709,7 +740,7 @@ class MovemeterTkGui(tk.Frame):
         slider_value = int(self.image_slider.get())
         image_i = int(slider_value) -1
         if self.images[image_i] is None:
-            self.images[image_i] = tifffile.imread(self.image_fns[image_i])
+            self.images[image_i] = self._imread(self.image_fns[image_i])[0]
         return self.images[image_i].shape
 
     
@@ -973,9 +1004,16 @@ class MovemeterTkGui(tk.Frame):
         self.images_plotter.update()
         self.set_status('ROIs plotted :)')
 
+    
+    def _get_fn_and_frame(self, i_image):
+        total_frames = 0
+        for i_fn, fn in enumerate(self.image_fns):
+            frames = self.N_frames.get(fn, 1)
+            total_frames += frames
 
-
-
+            if total_frames >= i_image:
+                return i_fn, frames - (total_frames - i_image)
+    
     def change_image(self, slider_value=None):
         
         slider_value = int(self.image_slider.get())
@@ -983,13 +1021,14 @@ class MovemeterTkGui(tk.Frame):
         image_i = int(slider_value) -1
         print(slider_value)
 
-        if not 0 <= image_i < len(self.image_fns):
+        if not 0 <= image_i < len(self.images):
             return None
         
         if self.use_mask_image:
             if self.mask_image is None:
                 for i in range(len(self.images)):
-                    self.images[i] = tifffile.imread(self.image_fns[i])
+
+                    self.images[i] = self._imread(self.image_fns[i])
                 
                 self.mask_image = np.inf * np.ones(self.image_shape)
                 
@@ -997,11 +1036,13 @@ class MovemeterTkGui(tk.Frame):
                     self.mask_image = np.min([self.mask_image, image], axis=0)
 
 
+        i_fn, i_frame = self._get_fn_and_frame(image_i)
+        
         if self.images[image_i] is None:
-            self.images[image_i] = tifffile.imread(self.image_fns[image_i])
+            self.images[image_i] = self._imread(self.image_fns[i_fn])[i_frame]    
+            print('{} {}'.format(i_fn, i_frame))
         
-        
-        if image_i in self.exclude_images or self.image_fns[image_i] in self.exclude_images:
+        if image_i in self.exclude_images or self.image_fns[i_fn] in self.exclude_images:
             self.excludetext.set_text('EXCLUDED')
         else: 
             self.excludetext.set_text('')
@@ -1045,6 +1086,8 @@ class MovemeterTkGui(tk.Frame):
     def _included_image_fns(self):
         return [fn for i_fn, fn in enumerate(self.image_fns) if fn not in self.exclude_images and i_fn not in self.exclude_images]
     
+    def _len_included_frames(self):
+        return sum([self.N_frames.get(fn) for fn in self._included_image_fns()])
 
     def calculate_heatmap(self):
         '''
@@ -1069,11 +1112,11 @@ class MovemeterTkGui(tk.Frame):
         roi_max_y = np.max([z[1] for z in rois])
         roi_min_y = np.min([z[1] for z in rois])
         
-
         step = int(self.overlap_slider.get())
         
         max_movement = float(self.maxmovement_slider.get())
-        N = len(self._included_image_fns())
+
+        N = self._len_included_frames()
 
         for i_frame in range(N):
             image = np.zeros( (int((roi_max_y-roi_min_y)/step)+1, int((roi_max_x-roi_min_x)/step)+1) )
