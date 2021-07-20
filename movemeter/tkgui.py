@@ -1,5 +1,18 @@
 '''
-A tkinter GUI for Movemeter.
+A tkinter/tk GUI for Movemeter the motion analysis tool.
+
+Features in short
+-----------------
+- Load, view and exclude images
+- Draw variously shaped ROIs that are made from small,
+    rectangular (square) cross-correlation windows,
+    and allow grouping these ROIs
+- Perform motion analysis and save results
+- View and save motion analysis heatmaps
+
+
+This file contains most of the GUI elements extra logic (such as saving results)
+that are not present in the movemeter.py file.
 '''
 
 import os
@@ -46,13 +59,16 @@ from movemeter.tk_heatmap import popup as open_httool
 
 class ColormapSelector(tk.Frame):
     '''
-    Widget to preview and select a matplotlib
-    colormap.
+    Widget to preview and select a matplotlib colormap.
     '''
     def __init__(self, tk_parent, callback, startmap=None):
         '''
+        tk_parent : object
+            Tkinter parent widget
         callback : callable
             When selected, the colormap passed to this callback function
+        startmap : string
+            Name of the colormap to start with.
         '''
         tk.Frame.__init__(self, tk_parent)
         
@@ -81,18 +97,21 @@ class ColormapSelector(tk.Frame):
         self.grid_columnconfigure(1, weight=10)
         self.grid_columnconfigure(1, weight=1)
 
+
     def on_selection(self, name):
         self._current = name
         self.plotter.imshow_obj.cmap = self.colormaps[name]
         self.plotter.update()
-    
+
+
     def on_ok(self):
         self._callback(self.colormaps[self._current])
 
 
+
 class MovemeterSettings(tk.Frame):
     '''
-    Movemeter settings semi-automatically inspected from
+    Movemeter settings widget, semi-automatically inspected from
     the Movemeter.__init__ method.
 
     Use get_current method to retrive the setting dictionary.
@@ -100,7 +119,9 @@ class MovemeterSettings(tk.Frame):
     Attributes
     ----------
     tickboxes : object
-        tk_steroids TickboxFrame.
+        tk_steroids TickboxFrame containing False/True options.
+    maxmovement_slider, blur_slider, cores_slider, upscale_slider: object
+        tkinter Slider widgets
     '''
     def __init__(self, tk_parent):
         '''
@@ -171,50 +192,75 @@ class MovemeterSettings(tk.Frame):
 
 class MovemeterTkGui(tk.Frame):
     '''
-    Class documentation TODO.
+    Main widget for the Movemeter tkinter GUI.
     
     ATTRIBUTES
     -----------
-    exclude_images : list of integers and/or strings
-        Images to skip by file name or by index
-    filename_extensions : tuple
-        Expected filename extensions
+    self.parent : object
+        tkinter parent widget
 
+    folders : list
+        List of opened directories
+    folders_listbox : object
+        tk_steroids Listbox of opened directories
+    current_folder : string
+        The currently selected folder from self.folder
+    image_fns : string
+        List of image filenames in th current folder.
+    images : list of Nones or list of ndarray
+        Initially list of Nones, as long as many images there are.
+        Incrimentally, becomes a list of images (numpy array).
+    exclude_images : list
+        List of image filenames or indices to exclude from the analysis.
+    fs : int or float
+        Sampling rate of the images, in Hz (1/s). Global for all data.
+    
+    filename_extensions : tuple of strings
+        Accepted filename extensions for images (or videos).
+    self.N_frames : dict
+        For video files of image stacks, contains the amount of frames
+        per each file and the filenames are the keys.
+    
+    selections : list
+    
     '''
 
     def __init__(self, tk_parent):
         tk.Frame.__init__(self, tk_parent)
         self.parent = tk_parent
 
-        self.current_folder = None
+        # Data and images
         self.folders = []
+        self.current_folder = None
         self.image_fns = []
         self.images = None
         self.exclude_images = []
-
-        self.selections = []
-        self.mask_image = None
-        self.roi_groups = []
-        self.current_roi_group = 0
-        self.roi_patches = []
-        self.results = []
-        
-        self.heatmap_images = []
-        
-        self.movemeter = None
         self.fs = 100
-
-        self.show_controls = False
-        self.use_mask_image = False
-
-        self.batch_name = 'batch_name'
-
-        self.colors = matplotlib.cm.ScalarMappable(cmap=matplotlib.cm.tab10)
-        self.colors.set_clim(0,10)
         
         self.filename_extensions = ('.tiff', '.tif', '.mp4')
         self.N_frames = {}
+       
+        # Selections and ROIs
+        self.selections = []
+        self.roi_groups = []
+        self.current_roi_group = 0
+        self.roi_patches = []
+        
+        self.colors = matplotlib.cm.ScalarMappable(cmap=matplotlib.cm.tab10)
+        self.colors.set_clim(0,10)
 
+        # Motion analysis
+        self.movemeter = Movemeter()
+        self.results = []
+        self.heatmap_images = []
+        self.batch_name = 'batch_name'
+
+        self.show_controls = False
+
+        # Other
+        self.use_mask_image = False
+        self.mask_image = None
+       
 
         # Top menu
         # --------------------------------
@@ -253,7 +299,8 @@ class MovemeterTkGui(tk.Frame):
         batchmenu = tk.Menu(self)
         batchmenu.add_command(label='Batch measure & save all', command=self.batch_process)
         batchmenu.add_separator()
-        batchmenu.add_command(label='Reprocess old', command=self.recalculate_old)
+        batchmenu.add_command(label='Reprocess rectangular selection (with current block settings)',
+                command=self.recalculate_old)
         batchmenu.add_command(label='Replot heatmap', command=self.replot_heatmap)
  
         self.menu.add_cascade(label='Batch', menu=batchmenu)
@@ -263,10 +310,7 @@ class MovemeterTkGui(tk.Frame):
         self.menu.add_cascade(label='Tools', menu=toolmenu)
         
 
-
         self.parent.config(menu=self.menu)
-
-        
 
 
         # Input folders
@@ -377,8 +421,7 @@ class MovemeterTkGui(tk.Frame):
         self.nroi_label.grid(row=6, column=1)
         self.nroi_label.grid_remove()
         self.nroi_slider = tk.Scale(self.roiview, from_=1, to=128,
-                orient=tk.HORIZONTAL, resolution=1,
-                command=self.nroi_slider_callback)
+                orient=tk.HORIZONTAL, resolution=1)
         self.nroi_slider.grid(row=6, column=2, sticky='NSWE')
         self.nroi_slider.grid_remove()
 
@@ -389,8 +432,6 @@ class MovemeterTkGui(tk.Frame):
                 orient=tk.HORIZONTAL, resolution=1)
         self.radial_len_slider.grid(row=7, column=2, sticky='NSWE')
         self.radial_len_slider.grid_remove()
-
-
 
 
 
@@ -459,9 +500,6 @@ class MovemeterTkGui(tk.Frame):
         self.resview = self.tabs.pages[0]
         self.heatview = self.tabs.pages[1]
 
-        #self.resview = tk.LabelFrame(self, text='Results')
-        #self.resview.grid(row=1, column=2)
-        
         self.resview.rowconfigure(2, weight=1)
         self.resview.columnconfigure(1, weight=1)
         self.heatview.columnconfigure(2, weight=1)
@@ -500,17 +538,24 @@ class MovemeterTkGui(tk.Frame):
         '''
         Use Movemeter to open image/video.
         '''
-        images = Movemeter()._imread(fn)
+        images = self.movemeter._imread(fn)
         return images
 
 
     def stop():
+        '''
+        Stop any ongoing motion analysis.
+        '''
         self.exit=True
         if self.movemeter:
             self.movemeter.stop()
 
-    def set_fs(self, fs=None):
 
+    def set_fs(self, fs=None):
+        '''
+        Opens a dialog to set the image sampling frequency (frame rate) so that
+        time axises come correctly.
+        '''
         if fs is None:
             fs = simpledialog.askfloat('Imaging frequency (Hz)', 'How many images were taken per second')
 
@@ -520,11 +565,17 @@ class MovemeterTkGui(tk.Frame):
 
 
     def open_settings(self):
+        '''
+        Placeholder for the settings dialog.
+        '''
         raise NotImplementedError
 
 
     def open_directory(self, directory=None):
-        
+        '''
+        Open a dialog to select a data directory and adds it to the
+        list of open directories.
+        '''
         if directory is None:
             try: 
                 with open(os.path.join(MOVEDIR, 'last_directory.txt'), 'r') as fp:
@@ -555,8 +606,10 @@ class MovemeterTkGui(tk.Frame):
             
             if noimages and has_subfolders:
                 directories = [os.path.join(directory, fn) for fn in os.listdir(directory)]
+                self.set_status('Added {} new directories'.format(len(directories)))
             else:
                 directories = [directory]
+                self.set_status('Added directory {}'.format(directory))
             
             for directory in directories:
                 self.folders.append(directory)
@@ -565,14 +618,19 @@ class MovemeterTkGui(tk.Frame):
 
     
     def remove_directory(self):
-        
+        '''
+        Closes a directory from the list of open data directories.
+        '''
         self.folders.remove(self.current_folder)
         self.folders_listbox.set_selections(self.folders)
+
+        self.set_status('Closed directory {}'.format(self.current_folder))
 
 
     def folder_selected(self, folder):
         '''
-        When the user selects a folder from the self.folders_listbox
+        When the user selects a folder from the list of open data
+        directories (that is self.folders_listbox)
         '''
         
         self.current_folder = folder
@@ -607,7 +665,13 @@ class MovemeterTkGui(tk.Frame):
 
     def toggle_exclude(self, by_index=False):
         '''
-        by_index  If true, toggle exclude for all images with this index
+        Look at the currently shown image and toggle its excludance.
+        
+        Arguments
+        ---------
+        by_index : bool
+            If true, toggle exclude for all images with this index.
+            If false, exclude the filename only.
         '''
 
         indx = int(self.image_slider.get()) - 1
@@ -625,16 +689,23 @@ class MovemeterTkGui(tk.Frame):
         
         self.mask_image = None
         self.change_image(slider_value=self.image_slider.get())
-        print(self.exclude_images)
     
+
     def toggle_controls(self):
+        '''
+        Show/hide image brightness/contrast controls.
+        '''
         self.show_controls = not(self.show_controls)
         self.change_image()
 
+
     def recalculate_old(self, directory=None):
         '''
-        Using the current settings, recalculate old data by opening the
-        zip file and reading image filenames and ROI limits from there.
+        Load old movzip, look the ROI extremes, and draw a new ROI
+        but using the current block settings (block size and distance).
+
+        Useful for testing how the results change when the selected
+        area remains approximately the same but the block settings change.
         '''
 
         if directory == None:
@@ -736,6 +807,11 @@ class MovemeterTkGui(tk.Frame):
 
 
     def measure_movement(self):
+        '''
+        Run motion analysis for the images in the currently selected
+        directory, using the drawn ROIs.
+        '''
+
         if self.image_fns and self.roi_groups:
             print('Started roi measurements')
            
@@ -756,10 +832,10 @@ class MovemeterTkGui(tk.Frame):
             self.calculate_heatmap()
             self.change_heatmap(1)
 
-            print('Finished roi measurements')
         else:
-            print('No rois')
-    
+            self.set_status('No images or ROIs selected')
+
+
     @property
     def image_shape(self):
         slider_value = int(self.image_slider.get())
@@ -770,7 +846,9 @@ class MovemeterTkGui(tk.Frame):
 
     
     def open_colormap_selection(self):
-        
+        '''
+        Start ColormapSelector widget in a toplevel window.
+        '''
         top = tk.Toplevel(self)
         top.title('Select colormap')
         sel = ColormapSelector(top, callback=self.apply_colormap,
@@ -780,8 +858,8 @@ class MovemeterTkGui(tk.Frame):
         top.columnconfigure(0, weight=1)
         top.mainloop()
 
+
     def apply_colormap(self, colormap):
-        
         if hasattr(colormap, 'colors'):
             self.colors.set_clim(0, len(colormap.colors))
         else:
@@ -819,11 +897,11 @@ class MovemeterTkGui(tk.Frame):
         self.set_status('Undone windows {} in ROI group {}'.format(N_rois_remove, i_roigroup))
 
 
-    def nroi_slider_callback(self, N=None):
-        pass
-
     def update_roitype_selection(self):
-        
+        '''
+        When user selects a certain ROI type (box, circle, ...) to draw
+        some of the sliders can be hidden.
+        '''
         selected = self.roitype_selection.ticked[0] 
 
         if selected in ['concentric_arcs_from_points', 'radial_lines_from_points']:
@@ -843,12 +921,17 @@ class MovemeterTkGui(tk.Frame):
 
         self.change_image()
 
+
     def clear_selections(self):
+        '''
+        Clear current user selections and ROIs (fresh start)
+        '''
         self.selections = []
         self.update_grid()
 
         self.roi_groups = []
         self.current_roi_group = 0
+
 
     def update_grid(self, *args):
 
@@ -871,17 +954,34 @@ class MovemeterTkGui(tk.Frame):
             self.images_plotter.update()
 
 
-
-    def fill_grid(self): 
+    def fill_grid(self):
+        '''
+        Create a selection spanning the whole image and distribute
+        cross-correlation windows everywhere.
+        '''
         self.set_roi(0,0,*reversed(self.image_shape))
-   
 
     def new_group(self):
+        '''
+        Advance to the next ROI group.
+        '''
         self.current_roi_group += 1
+
 
     def set_roi(self, x1=None,y1=None,x2=None,y2=None, params=None, user_made=True,
             recursion_data=None):
-        
+        '''
+        Add (or "remove") a ROI based on user selection.
+
+        Arguments
+        ---------
+        x1, y1, x2, y2 : None or int
+        params : none or dict
+        user_made : bool
+            Is this an user made selection.
+        recursion_data : None or something
+            Internal use.
+        '''
 
         if params is None:
             params = {}
@@ -1029,8 +1129,24 @@ class MovemeterTkGui(tk.Frame):
         self.images_plotter.update()
         self.set_status('ROIs plotted :)')
 
-    
+
     def _get_fn_and_frame(self, i_image):
+        '''
+        Workaround needed for video/stack files, getting the correct
+        filename and frame for the ith image.
+
+        Arguments
+        ---------
+        i_image : int
+            Index of the image.
+
+        Returns
+        -------
+        i_fn : int
+            Index of the file name in self.image_fns
+        i_frame : int
+            Index of the frame in the video/stack file.
+        '''
         total_frames = 0
         for i_fn, fn in enumerate(self.image_fns):
             frames = self.N_frames.get(fn, 1)
@@ -1039,12 +1155,14 @@ class MovemeterTkGui(tk.Frame):
             if total_frames >= i_image:
                 return i_fn, frames - (total_frames - i_image) - 1
     
+
     def change_image(self, slider_value=None):
-        
+        '''
+        Change the currently shown data image.
+        '''
         slider_value = int(self.image_slider.get())
 
         image_i = int(slider_value) -1
-        print(slider_value)
 
         if not 0 <= image_i < len(self.images):
             return None
@@ -1064,8 +1182,7 @@ class MovemeterTkGui(tk.Frame):
         i_fn, i_frame = self._get_fn_and_frame(image_i)
         
         if self.images[image_i] is None:
-            self.images[image_i] = self._imread(self.image_fns[i_fn])[i_frame]    
-            print('{} {}'.format(i_fn, i_frame))
+            self.images[image_i] = self._imread(self.image_fns[i_fn])[i_frame] 
         
         if image_i in self.exclude_images or self.image_fns[i_fn] in self.exclude_images:
             self.excludetext.set_text('EXCLUDED')
@@ -1085,17 +1202,30 @@ class MovemeterTkGui(tk.Frame):
 
     @staticmethod
     def get_displacements(results):
+        '''
+        Returns the directionless mangitude of the motion (displacement).
+        '''
         return [np.sqrt(np.array(x)**2+np.array(y)**2) for x,y in results]
 
 
     @staticmethod
     def get_destructive_displacement_mean(results):
+        '''
+        Takes first the mean of the x and y components separately, and then
+        calculates the directionless magnitude (displacement).
+
+        This way the "random walk" does not pollute the mean so much as when
+        taking the mean of the directionless magnitudes.
+        '''
         x = [x for x,y in results]
         y = [y for x,y in results]
         return np.sqrt(np.mean(x, axis=0)**2 + np.mean(y, axis=0)**2)
 
 
     def plot_results(self):
+        '''
+        Plots (time, displacement).
+        '''
         self.results_plotter.ax.clear()
 
         for i_roi_group, result in enumerate(self.results):
@@ -1111,8 +1241,10 @@ class MovemeterTkGui(tk.Frame):
     def _included_image_fns(self):
         return [fn for i_fn, fn in enumerate(self.image_fns) if fn not in self.exclude_images and i_fn not in self.exclude_images]
     
+
     def _len_included_frames(self):
         return sum([self.N_frames.get(fn, 1) for fn in self._included_image_fns()])
+
 
     def calculate_heatmap(self):
         '''
@@ -1168,6 +1300,9 @@ class MovemeterTkGui(tk.Frame):
 
 
     def change_heatmap(self, slider_value=None, only_return_image=False):
+        '''
+        When moving the slider to select the heatmap frame to show.
+        '''
         #if slider_value == None:
         slider_value = int(self.heatmap_slider.get())
 
@@ -1192,6 +1327,14 @@ class MovemeterTkGui(tk.Frame):
    
 
     def set_settings(self, settings):
+        '''
+        Apply the given settings.
+
+        Arguments
+        ----------
+        settings : dict
+            A dictionary of settings.
+        '''
         for key, value in settings.items():
             if key == 'block_size':
                 self.blocksize_slider.set(value)
@@ -1210,6 +1353,9 @@ class MovemeterTkGui(tk.Frame):
 
 
     def set_status(self, text):
+        '''
+        Shows info text at the window bottom.
+        '''
         self.status.config(text=text)
         self.status.update_idletasks()
     
@@ -1228,13 +1374,21 @@ class MovemeterTkGui(tk.Frame):
         if rois:
             self.selections = selections
             self.rois_groups = roi_groups
-            
             self.update_grid()
 
 
     def _save_movzip(self, fn=None, only=None):
         '''
+        Saves a movzip containg data/settings about the ran motion analysis.
+        
+        Arguments
+        ---------
+        fn : string or None
+            If None, ask the filename.
         only : bool, string or list of strings
+            Select to save only certain parts.
+            Possible values are 'metadata', 'image_filenames', 'selections',
+            'rois', 'movements' or any list combinations of these.
         '''
 
         if isinstance(only, str):
@@ -1287,7 +1441,11 @@ class MovemeterTkGui(tk.Frame):
 
     def _load_movzip(self, fn):
         '''
-        Returns settings, image_filenames, selections, rois, movements
+        Load a movzip, returning its contents.
+
+        Returns
+        -------
+        settings, image_filenames, selections, rois, movements
         '''
 
         movzip = []
@@ -1306,6 +1464,15 @@ class MovemeterTkGui(tk.Frame):
 
     
     def save_roiview(self, only_rois=False):
+        '''
+        Save the current image view with ROIs.
+
+        Arguments
+        ---------
+        only_rois : bool
+            If True, hide the image and show ROIs in the
+            saved image.
+        '''
         savefn = filedialog.asksaveasfilename()
         if savefn:
             fig = self.images_plotter.figure
@@ -1321,7 +1488,12 @@ class MovemeterTkGui(tk.Frame):
 
 
     def export_results(self, batch_name=None):
-
+        '''
+        Creates a folder containing motion analysis results
+        - movzip
+        - csv files
+        - images
+        '''
         savename = self.export_name.get()
         zipsavename = savename
 
@@ -1375,7 +1547,6 @@ class MovemeterTkGui(tk.Frame):
 
         slider_i = int(self.image_slider.get())
         self.image_slider.set(int(len(self._included_image_fns()))/2)
-        #change_image(slider_value=int(len(self._included_image_fns())/2))
 
         # Image of the ROIs
         self.set_status('Saving the image view')
@@ -1383,18 +1554,13 @@ class MovemeterTkGui(tk.Frame):
         fig.savefig(os.path.join(save_directory, 'movemeter_imageview.jpg'), dpi=400, pil_kwargs={'optimize': True})
         
         self.image_slider.set(slider_i)
-        #change_image(slider_value=int(len(self._included_image_fns())/2))
         
         # Image of the result traces
         self.set_status('Saving the results view')
         fig, ax = self.results_plotter.get_figax()
         fig.savefig(os.path.join(save_directory, 'movemeter_resultsview.jpg'), dpi=400, pil_kwargs={'optimize': True})
 
-        # Image of the result traces
-        #fig, ax = self.heatmap_plotter.get_figax()
-        #fig.savefig(os.path.join(save_directory, 'heatmap_view.jpg'), dpi=600, optimize=True)
-        
-        
+
         def save_heatmaps(heatmaps, image_fns, savedir):
             
             for fn, image in zip(image_fns, heatmaps):
@@ -1441,8 +1607,7 @@ class MovemeterTkGui(tk.Frame):
 
 def main():
     '''
-    Initialize tkinter and place the Movemeter GUI
-    on the window.
+    Initialize tkinter and start the Movemeter GUI.
     '''
     root = tk.Tk()
     root.title('Movemeter - Tkinter GUI - {}'.format(__version__))
