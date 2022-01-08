@@ -338,9 +338,9 @@ class Movemeter:
                     Y.append(y)
 
                     if self.tracking_rois:
-                        print('roi tracking')
-                        raise NotImplementedError
-                        #ROI = [ROI[0]+x, ROI[1]+y, ROI[2], ROI[3]]
+                        #print('roi tracking')
+                        #raise NotImplementedError
+                        ROI = [x, y, ROI[2], ROI[3]]
                     
                     print('{} {}'.format(x,y))
                     i_frame += 1
