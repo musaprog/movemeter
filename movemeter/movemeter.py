@@ -24,6 +24,8 @@ except ImportError:
     warnings.warn('cannot import scipy.ndimage; Movemeter preblur not available')
 
 
+from movemeter.movie import MovieIterator, TiffStackIterator
+
 class Movemeter:
     '''Analysing translational movement from time series of images.
 
@@ -73,14 +75,20 @@ class Movemeter:
     preblur : False or float
         Standard deviation of the Gaussian blur kernel, see scipy.ndimage.gaussian_filter
         Requires an optional dependency to scipy.
+    max_movement : None or int
+        If not None, in pixels, the maximum expected per-frame (compare_to_first=False)
+        or total (compare_to_first=True) motion analysis result in pixel.
+        This cropping the source image can increase performance a lot but too small
+        values will truncated and underestimated results.
     '''    
 
     def __init__(self, upscale=1, cc_backend='OpenCV', imload_backend='tifffile',
             absolute_results=False, tracking_rois=False, compare_to_first=True,
             subtract_previous=False, multiprocess=False, print_callback=print,
-            preblur=0):
-        
-        # See Class docstring for documentation
+            preblur=0, max_movement=None):
+        '''
+        See Class docstring for documentation
+        '''
 
         # Set the options given in constructor to same name attributes
         self.upscale = upscale
@@ -93,6 +101,7 @@ class Movemeter:
         self.multiprocess = multiprocess
         self.print_callback = print_callback
         self.preblur=preblur
+        self.max_movement = max_movement
 
         # IMAGE LOADING BACKEND
         self.imload_args = []
@@ -136,7 +145,6 @@ class Movemeter:
         raise NotImplementedError('_find_location (a method in Movemeter class) needs to be overridden by the selected cc_backend implementation.')
     
 
-
     def _imread(self, fn):
         '''
         Wrapper for self.imload (that depends on the image load backed).
@@ -151,13 +159,24 @@ class Movemeter:
 
         # If fn is an image already (np.array) just pass, otherwise, load
         if type(fn) == np.ndarray:
-            pass
+            image = fn
         else:
-            image = self.imload(fn, *self.imload_args)
-        
+            if fn.endswith('.mp4'):
+                iterator = MovieIterator(fn, post_process=self._imread)
+                return iterator
+            else:
+                size = os.path.getsize(fn)
+                if size < 4000000000:
+                    # Under the limit, open in RAM
+                    image = self.imload(fn)
+                else:
+                    # A big tiff stack, won't fit in RAM
+                    image = TiffStackIterator(fn, post_process=self._imread)
+                    return image
+
         # Check if the image file is actually a stack of many images.
         if len(image.shape) == 3:
-            pass 
+            pass
         else:
             image = [image]
        
@@ -168,9 +187,12 @@ class Movemeter:
             image[i] -= np.min(image[i])
             image[i] = (image[i] / np.max(image[i])) * 1000
             image[i] = image[i].astype(np.float32)
-            
+
             if self.preblur and scipy:
                 image[i] = scipy.ndimage.gaussian_filter(image[i], sigma=self.preblur)
+        
+        if not isinstance(image, list):
+            image = image.astype(np.float32)
 
         return image
 
@@ -316,9 +338,9 @@ class Movemeter:
                     Y.append(y)
 
                     if self.tracking_rois:
-                        print('roi tracking')
-                        raise NotImplementedError
-                        #ROI = [ROI[0]+x, ROI[1]+y, ROI[2], ROI[3]]
+                        #print('roi tracking')
+                        #raise NotImplementedError
+                        ROI = [x, y, ROI[2], ROI[3]]
                     
                     print('{} {}'.format(x,y))
                     i_frame += 1
@@ -389,7 +411,7 @@ class Movemeter:
             Analyse stack with index stack_i (order according what set to set_data method)
         max_movement : int
             Speed up the computation by specifying the maximum translation between
-            subsequent frames, in pixels.
+            subsequent frames, in pixels. If not specified use self.max_movement
         optimized : bool
             Experimental, if true use reversed roi/image looping order.
 
@@ -400,6 +422,8 @@ class Movemeter:
             where results_ROIj_for_stack_i = [movement_points_in_X, movement_points_in_Y]
 
         '''
+        if not max_movement:
+            max_movement = self.max_movement
 
         start_time = time.time()
         self.print_callback('Starting to analyse stack {}/{}'.format(stack_i+1, len(self.stacks)))
