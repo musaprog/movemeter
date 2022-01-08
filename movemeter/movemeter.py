@@ -24,8 +24,7 @@ except ImportError:
     warnings.warn('cannot import scipy.ndimage; Movemeter preblur not available')
 
 
-from movemeter.movie import MovieIterator
-
+from movemeter.movie import MovieIterator, TiffStackIterator
 
 class Movemeter:
     '''Analysing translational movement from time series of images.
@@ -160,17 +159,24 @@ class Movemeter:
 
         # If fn is an image already (np.array) just pass, otherwise, load
         if type(fn) == np.ndarray:
-            pass
+            image = fn
         else:
             if fn.endswith('.mp4'):
                 iterator = MovieIterator(fn, post_process=self._imread)
                 return iterator
             else:
-                image = self.imload(fn)
+                size = os.path.getsize(fn)
+                if size < 4000000000:
+                    # Under the limit, open in RAM
+                    image = self.imload(fn)
+                else:
+                    # A big tiff stack, won't fit in RAM
+                    image = TiffStackIterator(fn, post_process=self._imread)
+                    return image
 
         # Check if the image file is actually a stack of many images.
         if len(image.shape) == 3:
-            pass 
+            pass
         else:
             image = [image]
        
