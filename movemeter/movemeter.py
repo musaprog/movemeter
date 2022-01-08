@@ -187,9 +187,12 @@ class Movemeter:
             image[i] -= np.min(image[i])
             image[i] = (image[i] / np.max(image[i])) * 1000
             image[i] = image[i].astype(np.float32)
-            
+
             if self.preblur and scipy:
                 image[i] = scipy.ndimage.gaussian_filter(image[i], sigma=self.preblur)
+        
+        if not isinstance(image, list):
+            image = image.astype(np.float32)
 
         return image
 
