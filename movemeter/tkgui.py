@@ -144,15 +144,15 @@ class MovemeterSettings(tk.Frame):
         
 
         # GUI elements next
-        # First preprocessing options
-        tk.Label(self, text='Gaussian blur').grid(row=2, column=1)
-        self.blur_slider = tk.Scale(self, from_=0, to=32, orient=tk.HORIZONTAL)
-        self.blur_slider.set(0)
-        self.blur_slider.grid(row=2, column=2, sticky='NSWE')
-
         # True/false - motion analysis options
         self.tickboxes = TickboxFrame(self, moveargs, defaults=movedefaults)
-        self.tickboxes.grid(row=3, column=1, columnspan=2)
+        self.tickboxes.grid(row=2, column=1, columnspan=2)
+        
+        # Preprocessing options
+        tk.Label(self, text='Gaussian blur').grid(row=3, column=1)
+        self.blur_slider = tk.Scale(self, from_=0, to=32, orient=tk.HORIZONTAL)
+        self.blur_slider.set(0)
+        self.blur_slider.grid(row=3, column=2, sticky='NSWE')
 
         # Numerical value - motion analysis options
         tk.Label(self, text='Maximum movement').grid(row=4, column=1)
@@ -1297,6 +1297,10 @@ class MovemeterTkGui(tk.Frame):
 
         self.heatmap_slider.config(from_=1, to=len(self.heatmap_images))
         self.heatmap_slider.set(1) 
+        
+        maxcapval = np.max(self.heatmap_images)
+        self.heatmapcap_slider.config(from_=0, to=maxcapval)
+        self.heatmapcap_slider.set(maxcapval)
 
 
     def change_heatmap(self, slider_value=None, only_return_image=False):
@@ -1315,11 +1319,15 @@ class MovemeterTkGui(tk.Frame):
         
         # First value max cap
         firstframemax = np.max(self.heatmap_images[0:3], axis=0)
-        image[firstframemax > float(self.heatmap_firstcap_slider.get())] = 0
+        #image[firstframemax > float(self.heatmap_firstcap_slider.get())] = 0
         
         #image = image / float(self.heatmapcap_slider.get())
+        #image[np.isnan(image)] = 0
         image = image / np.max(image)
-    
+        if np.isnan(image).any():
+            image = np.ones(image.shape)
+            image[0][0] = 0
+
         if only_return_image:
             return image
         else:
@@ -1341,15 +1349,15 @@ class MovemeterTkGui(tk.Frame):
             elif key == 'block_distance':
                 self.overlap_slider.set(value)
             elif key == 'maximum_movement':
-                self.maxmovement_slider.set(value)
+                self.movemeter_settings.maxmovement_slider.set(value)
             elif key == 'upscale':
-                self.upscale_slider.set(value)
+                self.movemeter_settings.upscale_slider.set(value)
             elif key == 'cpu_cores':
-                self.cores_slider.set(value)
+                self.movemeter_settings.cores_slider.set(value)
             elif key == 'exclude_images':
                 self.exclude_images = value
             elif key == 'measurement_parameters':
-                self.movemeter_tickboxes.states = value
+                self.movemeter_settings.tickboxes.states = value
 
 
     def set_status(self, text):
