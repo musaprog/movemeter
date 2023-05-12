@@ -255,7 +255,7 @@ class Movemeter:
                         nexttime = time.time() + 2
 
                     x, y = self._find_location(image, ROI, previous_image,
-                            max_movement=int(max_movement), upscale=self.upscale)
+                            max_movement=max_movement, upscale=self.upscale)
                         
                     X[i_roi].append(x)
                     Y[i_roi].append(y)
@@ -332,7 +332,7 @@ class Movemeter:
                         image = image - mask_image
                     
                     x, y = self._find_location(image, [int(c) for c in ROI], previous_image, 
-                            max_movement=int(max_movement), upscale=self.upscale)
+                            max_movement=max_movement, upscale=self.upscale)
                         
                     X.append(x)
                     Y.append(y)

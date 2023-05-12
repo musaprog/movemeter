@@ -26,6 +26,7 @@ def _find_location(orig_im, ROI, orig_im_ref, max_movement=None, upscale=1):
     cx,cy,cw,ch = ROI
 
     if max_movement:
+        max_movement = int(max_movement)
 
         # rx,ry,rw,rh ; Coordinates for original image cropping
         rx,ry,rw,rh = (cx-max_movement, cy-max_movement, cw+2*max_movement, ch+2*max_movement)
