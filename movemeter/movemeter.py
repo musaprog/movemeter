@@ -24,7 +24,8 @@ except ImportError:
     warnings.warn('cannot import scipy.ndimage; Movemeter preblur not available')
 
 
-from movemeter.movie import MovieIterator, TiffStackIterator
+from movemeter.stacks import MovieIterator, TiffStackIterator
+
 
 class Movemeter:
     '''Analysing translational movement from time series of images.

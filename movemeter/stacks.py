@@ -1,5 +1,6 @@
 
 import cv2
+import numpy as np
 import tifffile
 
 class MovieIterator:
@@ -16,6 +17,7 @@ class MovieIterator:
         self.i_frame = 0
         self.post_process = post_process
         self.video_capture = cv2.VideoCapture(fn)
+        self.fn = fn
 
     def __iter__(self):
         return self
@@ -24,11 +26,13 @@ class MovieIterator:
 
         if i_frame is None:
             index = self.i_frame
+        else:
+            index = i_frame
         
-        self.video_capture.open()
-        self.video_capture.set(CAP_PROP_POS_FRAMES, float(index))
+        self.video_capture.open(self.fn)
+        self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, float(index))
         
-        reval, frame = self.video_capture.read() 
+        retval, frame = self.video_capture.read() 
         
         self.video_capture.release()
 
@@ -37,12 +41,16 @@ class MovieIterator:
             raise StopIteration
 
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        if post_process is not None:
+        if self.post_process is not None:
             frame = self.post_process(frame)
         
         if i_frame is None:
             self.i_frame += 1
-
+        
+        frame = np.array(frame)
+        if len(frame.shape) == 3:
+            frame = frame[0,:,:]
+    
         return frame
 
     def __len__(self):
@@ -85,3 +93,20 @@ class TiffStackIterator:
 
     def __getitem__(self, index):
         return self.__next__(i_frame=index)
+
+
+
+def stackread(fn):
+    '''Opens a tiff image stack or a video (mp4, avi, ...).
+
+    Returns an iterator to the stack.
+    '''
+
+    if fn.endswith('.tif') or fn.endswith('.tiff'):
+        image = TiffStackIterator(fn)
+        return image
+    else:
+        iterator = MovieIterator(fn)
+        return iterator
+
+
