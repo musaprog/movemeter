@@ -162,7 +162,7 @@ class Movemeter:
         if type(fn) == np.ndarray:
             image = fn
         else:
-            if fn.endswith('.mp4'):
+            if fn.endswith('.mp4') or fn.endswith('.avi'):
                 iterator = MovieIterator(fn, post_process=self._imread)
                 return iterator
             else:
