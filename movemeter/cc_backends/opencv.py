@@ -110,7 +110,7 @@ def _similarity(image1, image2):
 
 
 def _find_rotation(orig_im, ROI, orig_im_ref, max_rotation=None, upscale=1,
-                   round1_stepsize=10, extra_rounds=5, extra_round_steps=6):
+                   round1_steps=36, extra_rounds=5, extra_round_steps=6):
     '''Rotates template along its center and checks the best rotation.
  
     The ROI is internally change to the largest *square* ROI that fits
@@ -121,9 +121,8 @@ def _find_rotation(orig_im, ROI, orig_im_ref, max_rotation=None, upscale=1,
     max_rotation : float or int
         In degrees, how many degrees is the total range of rotation
         to be checked. Between 0 and 360 degrees.
-    round1_stepsize : float or int
-        In degrees, how much image is rotated within each step at
-        round one.
+    round1_steps : int
+        How many steps to take on the round 1.
     extra_rounds : int
         How many extra rounds to take in the vicinity of the first
         round result.
@@ -132,10 +131,9 @@ def _find_rotation(orig_im, ROI, orig_im_ref, max_rotation=None, upscale=1,
     '''
     scores = []
 
-
     if max_rotation is None:
-        a = -180-round1_stepsize/2.
-        b = 180-round1_stepsize/2.
+        a = -179.5
+        b = 179.5
     else:
         a = -max_rotation / 2.
         b =  max_rotation / 2.
@@ -162,7 +160,7 @@ def _find_rotation(orig_im, ROI, orig_im_ref, max_rotation=None, upscale=1,
 
     # Round 1 - Do all rotations
 
-    rotations = np.linspace(a, b, int(round((b-a)/round1_stepsize)))
+    rotations = np.linspace(a, b, round1_steps)
 
     for i_round in range(1+extra_rounds):
         scores = []
