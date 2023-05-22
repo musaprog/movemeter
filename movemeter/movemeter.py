@@ -27,6 +27,7 @@ except ImportError:
 from movemeter.stacks import MovieIterator, TiffStackIterator
 
 
+
 class Movemeter:
     '''Analysing translational movement from time series of images.
 
@@ -59,10 +60,25 @@ class Movemeter:
         Return results in absolute image coordinates
     tracking_rois : bool
         If True, ROIs are shifted between frames, following the movement
-    compare_to_first : bool
-        If True, use the ROI of the first image only to quantify the movement.
-        Good for purely translational motion when frame-to-frame displacements are
-        very small.
+    template_method : string
+        How to create the template image used in the motion analysis that
+        is based on template matching.
+
+        If string:
+        'first': Use the first image (default)
+                + Good even when frame-to-frame displacement are small
+        'previous': Use the frame before the current frame.
+                + Good when the object changes over time
+                - Bad when frame-to-frame displacements are small
+        'mean': Calculate the mean frame over the whole stack
+                + Good when frames are very noise
+                - Bad when movement too large
+
+        New since movemeter v0.6.0.
+            The prior versions' attribute called `compare_to_first` corresponded
+            to template_method='first' when set to True and to
+            template_method='previous' when set to False.
+
     subtract_previous : bool
         Special treatment for when there's a faint moving feature on a static
         background.
@@ -84,7 +100,7 @@ class Movemeter:
     '''    
 
     def __init__(self, upscale=1, cc_backend='OpenCV', imload_backend='tifffile',
-            absolute_results=False, tracking_rois=False, compare_to_first=True,
+            absolute_results=False, tracking_rois=False, template_method='first',
             subtract_previous=False, multiprocess=False, print_callback=print,
             preblur=0, max_movement=None):
         '''
@@ -97,7 +113,8 @@ class Movemeter:
         self.im_backend = imload_backend
         self.absolute_results = absolute_results
         self.tracking_rois = tracking_rois
-        self.compare_to_first = compare_to_first
+        #self.compare_to_first = compare_to_first           # removed in v0.6.0
+        self.template_method = template_method
         self.subtract_previous = subtract_previous
         self.multiprocess = multiprocess
         self.print_callback = print_callback
@@ -262,7 +279,11 @@ class Movemeter:
                     X[i_roi].append(x)
                     Y[i_roi].append(y)
                 
-                if not self.compare_to_first:
+                if self.template_method == 'first':
+                    # Shortcut for using the first frame as a template
+                    pass
+                elif self.template_method == 'previous':
+                    # Shortcut for using the previous image as a template
                     previous_image = image
             
         for x,y in zip(X,Y):
@@ -302,12 +323,17 @@ class Movemeter:
         if self.subtract_previous:
             mask_image = self.create_mask_image(image_fns)
 
-
         for i_roi, ROI in enumerate(ROIs):
             print('  _measureMovement: {}/{}'.format(i_roi+1, len(ROIs)))
-            if self.compare_to_first:
+            if self.template_method == 'first':
                 previous_image = self._imread(image_fns[0])[0]
-
+            elif self.template_method == 'mean':
+                # Fixme: blows up if huge stack that doesnt fit in RAM
+                images = []
+                for fn in image_fns:
+                    for image in self._imread(fn):
+                        images.append(image)
+                previous_image = np.mean(images, axis=0)
             X = []
             Y = []
             R = [] # rotations
@@ -324,7 +350,7 @@ class Movemeter:
                     print('ROI IS {}'.format(ROI))
                     print('Frame {}/{}'.format(i_frame, len(image_fns)+N_stacked))
                     
-                    if self.compare_to_first == False:
+                    if self.template_method == 'previous':
                         if self.subtract_previous:
                             # FIXME Possible bug here
                             previous_image = image -  mask_image
