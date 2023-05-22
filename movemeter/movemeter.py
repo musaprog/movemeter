@@ -124,8 +124,9 @@ class Movemeter:
         
         # CROSS CORRELATION BACKEND        
         if cc_backend == 'OpenCV':
-            from .cc_backends.opencv import _find_location
+            from .cc_backends.opencv import _find_location, _find_rotation
             self._find_location = _find_location
+            self._find_rotation = _find_rotation
        
 
 
@@ -285,7 +286,7 @@ class Movemeter:
         return results
 
 
-    def _measure_movement(self, image_fns, ROIs, max_movement=False):
+    def _measure_movement(self, image_fns, ROIs, max_movement=False, _rotation=False):
         '''
         Generic way to analyse movement using _find_location.
         
@@ -309,6 +310,7 @@ class Movemeter:
 
             X = []
             Y = []
+            R = [] # rotations
 
             i_frame = 0
 
@@ -332,33 +334,43 @@ class Movemeter:
                     if self.subtract_previous:
                         image = image - mask_image
                     
-                    x, y = self._find_location(image, [int(c) for c in ROI], previous_image, 
-                            max_movement=max_movement, upscale=self.upscale)
-                        
-                    X.append(x)
-                    Y.append(y)
+                    if not _rotation:
+                        x, y = self._find_location(image, [int(c) for c in ROI], previous_image, 
+                                max_movement=max_movement, upscale=self.upscale)
+                        X.append(x)
+                        Y.append(y)
 
-                    if self.tracking_rois:
-                        #print('roi tracking')
-                        #raise NotImplementedError
-                        ROI = [x, y, ROI[2], ROI[3]]
-                    
-                    print('{} {}'.format(x,y))
+                        if self.tracking_rois:
+                            #print('roi tracking')
+                            #raise NotImplementedError
+                            ROI = [x, y, ROI[2], ROI[3]]
+
+                        print('{} {}'.format(x,y))
+                    else:
+                        r = self._find_rotation(
+                                image, [int(c) for c in ROI], previous_image)
+                        R.append(r)
+                        print(r)
+
                     i_frame += 1
 
-            X = np.asarray(X)
-            Y = np.asarray(Y)
+            if not _rotation:
+                X = np.asarray(X)
+                Y = np.asarray(Y)
 
-            if not self.absolute_results:
-                X = X-X[0]
-                Y = Y-Y[0]
+                if not self.absolute_results:
+                    X = X-X[0]
+                    Y = Y-Y[0]
 
-                if not self.compare_to_first:
-                    X = np.cumsum(X)
-                    Y = np.cumsum(Y)
+                    if self.template_method == 'previous':
+                        X = np.cumsum(X)
+                        Y = np.cumsum(Y)
 
-            results.append([X.tolist(), Y.tolist()])
-        
+                results.append([X.tolist(), Y.tolist()])
+
+            else:
+                results.append(R)
+
         return results
 
 
@@ -394,9 +406,14 @@ class Movemeter:
         # ensure ROIs to ints
         self.ROIs = [[[int(x), int(y), int(w), int(h)] for x,y,w,h in ROI] for ROI in self.ROIs]
 
+    
+    def measure_rotation(self, stack_i):
+        '''Runs rotation analysis
+        '''
+        return self.measure_movement(stack_i, optimized=False, _rotation=True)
+    
 
-
-    def measure_movement(self, stack_i, max_movement=False, optimized=False):
+    def measure_movement(self, stack_i, max_movement=False, optimized=False, _rotation=False):
         ''' Run the translational movement analysis.
 
         Image stacks and ROIs are expected to be set before using set_data method.
@@ -475,7 +492,7 @@ class Movemeter:
                 worker = multiprocessing.Process(target=target,
                         args=[self.stacks[stack_i], worker_ROIs],
                         kwargs={'max_movement': max_movement, 'results_list': results_list,
-                            'worker_i': i_worker, 'messages': messages} )
+                                'worker_i': i_worker, 'messages': messages, '_rotation': _rotation} )
                 
                 workers.append(worker)
                 worker.start()
@@ -501,7 +518,7 @@ class Movemeter:
 
 
         else:
-            results = target(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement)
+            results = target(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement, _rotation=_rotation)
         
 
         self.print_callback('Finished stack {}/{} in {} secods'.format(stack_i+1, len(self.stacks), time.time()-start_time))
