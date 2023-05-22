@@ -109,7 +109,7 @@ def _similarity(image1, image2):
 
 
 
-def _find_rotation(orig_im, ROI, orig_im_ref, max_rotation=None,
+def _find_rotation(orig_im, ROI, orig_im_ref, max_rotation=None, upscale=1,
                    round1_stepsize=10, extra_rounds=5, extra_round_steps=6):
     '''Rotates template along its center and checks the best rotation.
  
@@ -154,6 +154,11 @@ def _find_rotation(orig_im, ROI, orig_im_ref, max_rotation=None,
 
 
     template = orig_im_ref[cy:cy+ch, cx:cx+cw]
+    if upscale != 1:
+        template = resize(np.copy(template), upscale)
+        original = resize(np.copy(orig_im[cy:cy+ch, cx:cx+cw]), upscale)
+    else:
+        original = orig_im[cy:cy+ch, cx:cx+cw]
 
     # Round 1 - Do all rotations
 
@@ -176,7 +181,7 @@ def _find_rotation(orig_im, ROI, orig_im_ref, max_rotation=None,
             rotated_template = rotated_template[my:shape[0]-my, mx:shape[1]-mx]
 
             
-            score = _similarity(orig_im[cy:cy+ch, cx:cx+cw], rotated_template)
+            score = _similarity(original, rotated_template)
             scores.append(score)
         
         i_best = np.argmax(scores)

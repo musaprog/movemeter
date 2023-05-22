@@ -374,7 +374,7 @@ class Movemeter:
                         print('{} {}'.format(x,y))
                     else:
                         r = self._find_rotation(
-                                image, [int(c) for c in ROI], previous_image)
+                                image, [int(c) for c in ROI], previous_image, upscale=self.upscale)
                         R.append(r)
                         print(r)
 
