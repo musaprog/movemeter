@@ -77,12 +77,16 @@ class TiffStackIterator:
     def __next__(self, i_frame=None):
         if i_frame is None:
             index = self.i_frame
-            self.i_frame += 1
+        else:
+            index = i_frame
 
         try:
-            frame = self.tiff.asarray(key=self.i_frame)
+            frame = self.tiff.asarray(key=index)
         except IndexError:
             raise StopIteration
+
+        if i_frame is None:
+            self.i_frame += 1
 
         if self.post_process is not None:
             frame = self.post_process(frame)[0]
