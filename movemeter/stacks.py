@@ -58,7 +58,31 @@ class MovieIterator:
 
 
     def __getitem__(self, index):
-        return self.__next__(i_frame=index)
+        if isinstance(index, slice):
+            # Return a list of frames if slice
+            images = []
+            if index.start is not None:
+                start = index.start
+            else:
+                start = 0
+            if index.stop is not None:
+                stop = index.stop
+            else:
+                stop = len(self)
+            if index.step is not None:
+                step = index.step
+            else:
+                step = 1
+            for i in range(start, stop, step):
+                #try:
+                image = self.__next__(i_frame=i)
+                #except StopIteration:
+                #    break
+                images.append(image)
+            return images
+        else:
+            # Integer pressumably, return one frame
+            return self.__next__(i_frame=index)
 
 
 class TiffStackIterator:
