@@ -125,6 +125,9 @@ class TiffStackIterator:
     def __getitem__(self, index):
         return self.__next__(i_frame=index)
 
+    def __del__(self):
+        self.tiff.close()
+
 
 
 class TiffStackWriter:
