@@ -102,7 +102,7 @@ class Movemeter:
     def __init__(self, upscale=1, cc_backend='OpenCV', imload_backend='tifffile',
             absolute_results=False, tracking_rois=False, template_method='first',
             subtract_previous=False, multiprocess=False, print_callback=print,
-            preblur=0, max_movement=None):
+            preblur=0, max_movement=None, max_rotation=None):
         '''
         See Class docstring for documentation
         '''
@@ -120,6 +120,7 @@ class Movemeter:
         self.print_callback = print_callback
         self.preblur=preblur
         self.max_movement = max_movement
+        self.max_rotation = max_rotation
 
         # IMAGE LOADING BACKEND
         self.imload_args = []
@@ -374,7 +375,7 @@ class Movemeter:
                         print('{} {}'.format(x,y))
                     else:
                         r = self._find_rotation(
-                                image, [int(c) for c in ROI], previous_image, upscale=self.upscale)
+                                image, [int(c) for c in ROI], previous_image, max_movement=max_movement, upscale=self.upscale, max_rotation=self.max_rotation)
                         R.append(r)
                         print(r)
 

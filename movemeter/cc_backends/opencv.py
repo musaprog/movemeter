@@ -94,22 +94,37 @@ def _find_location(orig_im, ROI, orig_im_ref, max_movement=None, upscale=1):
 
 
 
-def _similarity(image1, image2):
+def _similarity(image1, image2, max_movement=None):
     '''Uses OpenCVs matchTemplate to give a score.
     
     image1, image2 : np.arrays
         The compared images.
+    max_movement : int
+        In pixels, what is the maximum distance to look for the match.
+        If 0, only look to match image1 center.
     '''
+    if max_movement:
+        w1, h1 = image1.shape
+        w2, h2 = image2.shape
+
+        if w1 > w2 or h1 > w2:
+            # smaller
+            mx = int(max(0, w1-w2)/2)
+            my = int(max(0, h1-h2)/2)
+
+
+            image1 = np.copy(image1)[my:h1-my, mx:h1-mx]
+
     values = cv2.matchTemplate(image1, image2, cv2.TM_CCOEFF_NORMED)
     
-    return values[int(values.shape[0]/2), int(values.shape[1]/2)]
-    
-    #min_val, max_val, min_loc, max_lov = cv2.minMaxLoc(values)
-    #return np.max(values)
+
+    min_val, max_val, min_loc, max_lov = cv2.minMaxLoc(values)
+    return np.max(values)
 
 
 
-def _find_rotation(orig_im, ROI, orig_im_ref, max_rotation=None, upscale=1,
+def _find_rotation(orig_im, ROI, orig_im_ref, upscale=1,
+                   max_movement=None, max_rotation=None,
                    round1_steps=36, extra_rounds=5, extra_round_steps=6):
     '''Rotates template along its center and checks the best rotation.
  
@@ -130,6 +145,7 @@ def _find_rotation(orig_im, ROI, orig_im_ref, max_rotation=None, upscale=1,
         How many rotations to test on the extra rounds.
     '''
     scores = []
+
 
     if max_rotation is None:
         a = -179.5
@@ -179,7 +195,7 @@ def _find_rotation(orig_im, ROI, orig_im_ref, max_rotation=None, upscale=1,
             rotated_template = rotated_template[my:shape[0]-my, mx:shape[1]-mx]
 
             
-            score = _similarity(original, rotated_template)
+            score = _similarity(original, rotated_template, max_movement)
             scores.append(score)
         
         i_best = np.argmax(scores)
