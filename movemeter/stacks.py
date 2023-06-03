@@ -3,6 +3,8 @@ import cv2
 import numpy as np
 import tifffile
 
+
+
 class MovieIterator:
     '''
     Iteratively return video file (.mp4 or other) frames
@@ -85,6 +87,7 @@ class MovieIterator:
             return self.__next__(i_frame=index)
 
 
+
 class TiffStackIterator:
     '''
     Using tifffile, reads a huge stack page by page.
@@ -124,6 +127,46 @@ class TiffStackIterator:
 
 
 
+class TiffStackWriter:
+    '''Using tifffile, writes a huge stack page by page.
+
+    Attributes
+    ----------
+    i_pages : int
+        Amount of pages written.
+    '''
+    def __init__(self, fn):
+        self.i_pages = 0
+        self.fn = fn
+        self.tiff = None
+
+    def open(self):
+        self.tiff = tifffile.TiffWriter(self.fn)
+        self.i_pages = 0
+
+    def close(self):
+        self.tiff.close()
+
+    def write(self, image):
+        self.tiff.write(image)
+        self.i_pages += 1
+
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
+def stackwrite(fn):
+    '''Returns a write file like object (open, close, write, and __enter__,
+    __exit__ for with statement)
+    '''
+    return TiffStackWriter(fn)
+
+
+
 def stackread(fn):
     '''Opens a tiff image stack or a video (mp4, avi, ...).
 
@@ -136,5 +179,7 @@ def stackread(fn):
     else:
         iterator = MovieIterator(fn)
         return iterator
+
+
 
 
