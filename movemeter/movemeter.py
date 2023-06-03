@@ -10,6 +10,7 @@ import os
 import time
 import multiprocessing
 import warnings
+import types
 
 import exifread
 import numpy as np
@@ -24,9 +25,7 @@ except ImportError:
     warnings.warn('cannot import scipy.ndimage; Movemeter preblur not available')
 
 
-from movemeter.stacks import MovieIterator, TiffStackIterator
-
-
+from movemeter.stacks import stackread
 
 class Movemeter:
     '''Analysing translational movement from time series of images.
@@ -177,42 +176,36 @@ class Movemeter:
         in the tiff file.
         '''
 
-        # If fn is an image already (np.array) just pass, otherwise, load
-        if type(fn) == np.ndarray:
-            image = fn
-        else:
-            if fn.endswith('.mp4') or fn.endswith('.avi'):
-                iterator = MovieIterator(fn, post_process=self._imread)
-                return iterator
-            else:
-                size = os.path.getsize(fn)
-                if size < 4000000000:
-                    # Under the limit, open in RAM
-                    image = self.imload(fn)
-                else:
-                    # A big tiff stack, won't fit in RAM
-                    image = TiffStackIterator(fn, post_process=self._imread)
-                    return image
+        # Check the appropriate action
 
-        # Check if the image file is actually a stack of many images.
-        if len(image.shape) == 3:
-            pass
+        if isinstance(fn, str):
+            return stackread(fn)
+        elif isinstance(fn, np.ndarray):
+            return fn
+        elif hasattr(fn, '__iter__') or hasattr(fn, '__getitem__'):
+            return fn
         else:
-            image = [image]
+            print(f'Warning! Unkown fn: {fn}')
+            return fn
+        # Check if the image file is actually a stack of many images.
+        #if len(image.shape) == 3:
+        #    pass
+        #else:
+        #    image = [image]
        
         # Normalize values to interval 0...1000
         # FIXME Is the range 0...1000 optimal?
 
-        for i in range(len(image)):
-            image[i] -= np.min(image[i])
-            image[i] = (image[i] / np.max(image[i])) * 1000
-            image[i] = image[i].astype(np.float32)
+        #for i in range(len(image)):
+        #    image[i] -= np.min(image[i])
+        #    image[i] = (image[i] / np.max(image[i])) * 1000
+        #    image[i] = image[i].astype(np.float32)
 
-            if self.preblur and scipy:
-                image[i] = scipy.ndimage.gaussian_filter(image[i], sigma=self.preblur)
+        #    if self.preblur and scipy:
+        #        image[i] = scipy.ndimage.gaussian_filter(image[i], sigma=self.preblur)
         
-        if not isinstance(image, list):
-            image = image.astype(np.float32)
+        #if not isinstance(image, list):
+        #    image = image.astype(np.float32)
 
         return image
 
@@ -335,6 +328,8 @@ class Movemeter:
                     for image in self._imread(fn):
                         images.append(image)
                 previous_image = np.mean(images, axis=0)
+
+            previous_image = previous_image.astype(np.float32, copy=False)
             X = []
             Y = []
             R = [] # rotations
@@ -342,11 +337,13 @@ class Movemeter:
             i_frame = 0
 
             for fn in image_fns[0:]:
-                
+
                 images = self._imread(fn)
                 N_stacked += len(images) - 1
                   
                 for image in images:
+
+                    image = image.astype(np.float32, copy=False)
 
                     print('ROI IS {}'.format(ROI))
                     print('Frame {}/{}'.format(i_frame, len(image_fns)+N_stacked))
