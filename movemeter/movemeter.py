@@ -227,7 +227,8 @@ class Movemeter:
 
 
     def _measure_movement_optimized_xray_data(self, image_fns, ROIs,
-            max_movement=False, results_list=None, worker_i=0, messages=[]):
+            max_movement=False, results_list=None, worker_i=0, messages=[],
+            _rotation=False):
         '''
         Optimized version when there's many rois and subtract previous
         is True and compare_to_first is False.
@@ -248,13 +249,19 @@ class Movemeter:
         else:
             previous_image = self._imread(image_fns[0])[0]
 
-        X = [[] for roi in ROIs]
-        Y = [[] for roi in ROIs]
- 
+        previous_image = previous_image.astype(np.float32, copy=False)
+
+        if not _rotation:
+            X = [[] for roi in ROIs]
+            Y = [[] for roi in ROIs]
+        else:
+            R = [[] for roi in ROIs]
+
         for i, fn in enumerate(image_fns[0:]):
 
             for image in self._imread(fn):
 
+                image = image.astype(np.float32, copy=False)
                 if self.subtract_previous:
                     image = image - mask_image
                 
@@ -267,33 +274,51 @@ class Movemeter:
                         messages.append(message)
                         nexttime = time.time() + 2
 
-                    x, y = self._find_location(image, ROI, previous_image,
-                            max_movement=max_movement, upscale=self.upscale)
-                        
-                    X[i_roi].append(x)
-                    Y[i_roi].append(y)
-                
+                    
+                    if not _rotation:
+                        x, y = self._find_location(image, ROI, previous_image, 
+                                max_movement=max_movement, upscale=self.upscale)
+
+                        X[i_roi].append(x)
+                        Y[i_roi].append(y)
+ 
+                        if self.tracking_rois:
+                            ROIs[i_roi] = [x, y, ROI[2], ROI[3]]
+
+                        print('{} {}'.format(x,y))
+                    else:
+                        r = self._find_rotation(
+                                image, [int(c) for c in ROI], previous_image, max_movement=max_movement, upscale=self.upscale, max_rotation=self.max_rotation)
+                        R.append(r)
+                        print(r)
+
+                       
+               
                 if self.template_method == 'first':
                     # Shortcut for using the first frame as a template
                     pass
                 elif self.template_method == 'previous':
                     # Shortcut for using the previous image as a template
                     previous_image = image
-            
-        for x,y in zip(X,Y):
         
-            x = np.asarray(x)
-            y = np.asarray(y)
+        if not _rotation:
+            for x,y in zip(X,Y):
             
-            if not self.absolute_results:
-                x = x-x[0]
-                y = y-y[0]
+                x = np.asarray(x)
+                y = np.asarray(y)
+                
+                if not self.absolute_results:
+                    x = x-x[0]
+                    y = y-y[0]
+                    
+                    if self.template_method == 'previous':
+                        x = np.cumsum(x)
+                        y = np.cumsum(y)
 
-                x = np.cumsum(x)
-                y = np.cumsum(y)
+                results.append([x.tolist(), y.tolist()])
+        else:
+            raise NotImplementedError
 
-            results.append([x.tolist(), y.tolist()])
-        
         if results_list is not None:
             results_list[worker_i] = results
             return None
