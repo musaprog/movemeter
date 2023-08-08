@@ -10,6 +10,7 @@ import os
 import time
 import multiprocessing
 import warnings
+import types
 
 import exifread
 import numpy as np
@@ -24,7 +25,7 @@ except ImportError:
     warnings.warn('cannot import scipy.ndimage; Movemeter preblur not available')
 
 
-from movemeter.movie import MovieIterator, TiffStackIterator
+from movemeter.stacks import stackread
 
 class Movemeter:
     '''Analysing translational movement from time series of images.
@@ -58,10 +59,25 @@ class Movemeter:
         Return results in absolute image coordinates
     tracking_rois : bool
         If True, ROIs are shifted between frames, following the movement
-    compare_to_first : bool
-        If True, use the ROI of the first image only to quantify the movement.
-        Good for purely translational motion when frame-to-frame displacements are
-        very small.
+    template_method : string
+        How to create the template image used in the motion analysis that
+        is based on template matching.
+
+        If string:
+        'first': Use the first image (default)
+                + Good even when frame-to-frame displacement are small
+        'previous': Use the frame before the current frame.
+                + Good when the object changes over time
+                - Bad when frame-to-frame displacements are small
+        'mean': Calculate the mean frame over the whole stack
+                + Good when frames are very noise
+                - Bad when movement too large
+
+        New since movemeter v0.6.0.
+            The prior versions' attribute called `compare_to_first` corresponded
+            to template_method='first' when set to True and to
+            template_method='previous' when set to False.
+
     subtract_previous : bool
         Special treatment for when there's a faint moving feature on a static
         background.
@@ -83,9 +99,9 @@ class Movemeter:
     '''    
 
     def __init__(self, upscale=1, cc_backend='OpenCV', imload_backend='tifffile',
-            absolute_results=False, tracking_rois=False, compare_to_first=True,
+            absolute_results=False, tracking_rois=False, template_method='first',
             subtract_previous=False, multiprocess=False, print_callback=print,
-            preblur=0, max_movement=None):
+            preblur=0, max_movement=None, max_rotation=None):
         '''
         See Class docstring for documentation
         '''
@@ -96,12 +112,14 @@ class Movemeter:
         self.im_backend = imload_backend
         self.absolute_results = absolute_results
         self.tracking_rois = tracking_rois
-        self.compare_to_first = compare_to_first
+        #self.compare_to_first = compare_to_first           # removed in v0.6.0
+        self.template_method = template_method
         self.subtract_previous = subtract_previous
         self.multiprocess = multiprocess
         self.print_callback = print_callback
         self.preblur=preblur
         self.max_movement = max_movement
+        self.max_rotation = max_rotation
 
         # IMAGE LOADING BACKEND
         self.imload_args = []
@@ -123,8 +141,9 @@ class Movemeter:
         
         # CROSS CORRELATION BACKEND        
         if cc_backend == 'OpenCV':
-            from .cc_backends.opencv import _find_location
+            from .cc_backends.opencv import _find_location, _find_rotation
             self._find_location = _find_location
+            self._find_rotation = _find_rotation
        
 
 
@@ -157,42 +176,36 @@ class Movemeter:
         in the tiff file.
         '''
 
-        # If fn is an image already (np.array) just pass, otherwise, load
-        if type(fn) == np.ndarray:
-            image = fn
-        else:
-            if fn.endswith('.mp4'):
-                iterator = MovieIterator(fn, post_process=self._imread)
-                return iterator
-            else:
-                size = os.path.getsize(fn)
-                if size < 4000000000:
-                    # Under the limit, open in RAM
-                    image = self.imload(fn)
-                else:
-                    # A big tiff stack, won't fit in RAM
-                    image = TiffStackIterator(fn, post_process=self._imread)
-                    return image
+        # Check the appropriate action
 
-        # Check if the image file is actually a stack of many images.
-        if len(image.shape) == 3:
-            pass
+        if isinstance(fn, str):
+            return stackread(fn)
+        elif isinstance(fn, np.ndarray):
+            return fn
+        elif hasattr(fn, '__iter__') or hasattr(fn, '__getitem__'):
+            return fn
         else:
-            image = [image]
+            print(f'Warning! Unkown fn: {fn}')
+            return fn
+        # Check if the image file is actually a stack of many images.
+        #if len(image.shape) == 3:
+        #    pass
+        #else:
+        #    image = [image]
        
         # Normalize values to interval 0...1000
         # FIXME Is the range 0...1000 optimal?
 
-        for i in range(len(image)):
-            image[i] -= np.min(image[i])
-            image[i] = (image[i] / np.max(image[i])) * 1000
-            image[i] = image[i].astype(np.float32)
+        #for i in range(len(image)):
+        #    image[i] -= np.min(image[i])
+        #    image[i] = (image[i] / np.max(image[i])) * 1000
+        #    image[i] = image[i].astype(np.float32)
 
-            if self.preblur and scipy:
-                image[i] = scipy.ndimage.gaussian_filter(image[i], sigma=self.preblur)
+        #    if self.preblur and scipy:
+        #        image[i] = scipy.ndimage.gaussian_filter(image[i], sigma=self.preblur)
         
-        if not isinstance(image, list):
-            image = image.astype(np.float32)
+        #if not isinstance(image, list):
+        #    image = image.astype(np.float32)
 
         return image
 
@@ -214,7 +227,8 @@ class Movemeter:
 
 
     def _measure_movement_optimized_xray_data(self, image_fns, ROIs,
-            max_movement=False, results_list=None, worker_i=0, messages=[]):
+            max_movement=False, results_list=None, worker_i=0, messages=[],
+            _rotation=False):
         '''
         Optimized version when there's many rois and subtract previous
         is True and compare_to_first is False.
@@ -235,13 +249,19 @@ class Movemeter:
         else:
             previous_image = self._imread(image_fns[0])[0]
 
-        X = [[] for roi in ROIs]
-        Y = [[] for roi in ROIs]
- 
+        previous_image = previous_image.astype(np.float32, copy=False)
+
+        if not _rotation:
+            X = [[] for roi in ROIs]
+            Y = [[] for roi in ROIs]
+        else:
+            R = [[] for roi in ROIs]
+
         for i, fn in enumerate(image_fns[0:]):
 
             for image in self._imread(fn):
 
+                image = image.astype(np.float32, copy=False)
                 if self.subtract_previous:
                     image = image - mask_image
                 
@@ -254,29 +274,51 @@ class Movemeter:
                         messages.append(message)
                         nexttime = time.time() + 2
 
-                    x, y = self._find_location(image, ROI, previous_image,
-                            max_movement=int(max_movement), upscale=self.upscale)
-                        
-                    X[i_roi].append(x)
-                    Y[i_roi].append(y)
-                
-                if not self.compare_to_first:
+                    
+                    if not _rotation:
+                        x, y = self._find_location(image, ROI, previous_image, 
+                                max_movement=max_movement, upscale=self.upscale)
+
+                        X[i_roi].append(x)
+                        Y[i_roi].append(y)
+ 
+                        if self.tracking_rois:
+                            ROIs[i_roi] = [x, y, ROI[2], ROI[3]]
+
+                        print('{} {}'.format(x,y))
+                    else:
+                        r = self._find_rotation(
+                                image, [int(c) for c in ROI], previous_image, max_movement=max_movement, upscale=self.upscale, max_rotation=self.max_rotation)
+                        R.append(r)
+                        print(r)
+
+                       
+               
+                if self.template_method == 'first':
+                    # Shortcut for using the first frame as a template
+                    pass
+                elif self.template_method == 'previous':
+                    # Shortcut for using the previous image as a template
                     previous_image = image
-            
-        for x,y in zip(X,Y):
         
-            x = np.asarray(x)
-            y = np.asarray(y)
+        if not _rotation:
+            for x,y in zip(X,Y):
             
-            if not self.absolute_results:
-                x = x-x[0]
-                y = y-y[0]
+                x = np.asarray(x)
+                y = np.asarray(y)
+                
+                if not self.absolute_results:
+                    x = x-x[0]
+                    y = y-y[0]
+                    
+                    if self.template_method == 'previous':
+                        x = np.cumsum(x)
+                        y = np.cumsum(y)
 
-                x = np.cumsum(x)
-                y = np.cumsum(y)
+                results.append([x.tolist(), y.tolist()])
+        else:
+            raise NotImplementedError
 
-            results.append([x.tolist(), y.tolist()])
-        
         if results_list is not None:
             results_list[worker_i] = results
             return None
@@ -284,7 +326,7 @@ class Movemeter:
         return results
 
 
-    def _measure_movement(self, image_fns, ROIs, max_movement=False):
+    def _measure_movement(self, image_fns, ROIs, max_movement=False, _rotation=False):
         '''
         Generic way to analyse movement using _find_location.
         
@@ -300,28 +342,38 @@ class Movemeter:
         if self.subtract_previous:
             mask_image = self.create_mask_image(image_fns)
 
-
         for i_roi, ROI in enumerate(ROIs):
             print('  _measureMovement: {}/{}'.format(i_roi+1, len(ROIs)))
-            if self.compare_to_first:
+            if self.template_method == 'first':
                 previous_image = self._imread(image_fns[0])[0]
+            elif self.template_method == 'mean':
+                # Fixme: blows up if huge stack that doesnt fit in RAM
+                images = []
+                for fn in image_fns:
+                    for image in self._imread(fn):
+                        images.append(image)
+                previous_image = np.mean(images, axis=0)
 
+            previous_image = previous_image.astype(np.float32, copy=False)
             X = []
             Y = []
+            R = [] # rotations
 
             i_frame = 0
 
             for fn in image_fns[0:]:
-                
+
                 images = self._imread(fn)
                 N_stacked += len(images) - 1
                   
                 for image in images:
 
+                    image = image.astype(np.float32, copy=False)
+
                     print('ROI IS {}'.format(ROI))
                     print('Frame {}/{}'.format(i_frame, len(image_fns)+N_stacked))
                     
-                    if self.compare_to_first == False:
+                    if self.template_method == 'previous':
                         if self.subtract_previous:
                             # FIXME Possible bug here
                             previous_image = image -  mask_image
@@ -331,33 +383,43 @@ class Movemeter:
                     if self.subtract_previous:
                         image = image - mask_image
                     
-                    x, y = self._find_location(image, [int(c) for c in ROI], previous_image, 
-                            max_movement=int(max_movement), upscale=self.upscale)
-                        
-                    X.append(x)
-                    Y.append(y)
+                    if not _rotation:
+                        x, y = self._find_location(image, [int(c) for c in ROI], previous_image, 
+                                max_movement=max_movement, upscale=self.upscale)
+                        X.append(x)
+                        Y.append(y)
 
-                    if self.tracking_rois:
-                        #print('roi tracking')
-                        #raise NotImplementedError
-                        ROI = [x, y, ROI[2], ROI[3]]
-                    
-                    print('{} {}'.format(x,y))
+                        if self.tracking_rois:
+                            #print('roi tracking')
+                            #raise NotImplementedError
+                            ROI = [x, y, ROI[2], ROI[3]]
+
+                        print('{} {}'.format(x,y))
+                    else:
+                        r = self._find_rotation(
+                                image, [int(c) for c in ROI], previous_image, max_movement=max_movement, upscale=self.upscale, max_rotation=self.max_rotation)
+                        R.append(r)
+                        print(r)
+
                     i_frame += 1
 
-            X = np.asarray(X)
-            Y = np.asarray(Y)
+            if not _rotation:
+                X = np.asarray(X)
+                Y = np.asarray(Y)
 
-            if not self.absolute_results:
-                X = X-X[0]
-                Y = Y-Y[0]
+                if not self.absolute_results:
+                    X = X-X[0]
+                    Y = Y-Y[0]
 
-                if not self.compare_to_first:
-                    X = np.cumsum(X)
-                    Y = np.cumsum(Y)
+                    if self.template_method == 'previous':
+                        X = np.cumsum(X)
+                        Y = np.cumsum(Y)
 
-            results.append([X.tolist(), Y.tolist()])
-        
+                results.append([X.tolist(), Y.tolist()])
+
+            else:
+                results.append(R)
+
         return results
 
 
@@ -393,9 +455,14 @@ class Movemeter:
         # ensure ROIs to ints
         self.ROIs = [[[int(x), int(y), int(w), int(h)] for x,y,w,h in ROI] for ROI in self.ROIs]
 
+    
+    def measure_rotation(self, stack_i):
+        '''Runs rotation analysis
+        '''
+        return self.measure_movement(stack_i, optimized=False, _rotation=True)
+    
 
-
-    def measure_movement(self, stack_i, max_movement=False, optimized=False):
+    def measure_movement(self, stack_i, max_movement=False, optimized=False, _rotation=False):
         ''' Run the translational movement analysis.
 
         Image stacks and ROIs are expected to be set before using set_data method.
@@ -474,7 +541,7 @@ class Movemeter:
                 worker = multiprocessing.Process(target=target,
                         args=[self.stacks[stack_i], worker_ROIs],
                         kwargs={'max_movement': max_movement, 'results_list': results_list,
-                            'worker_i': i_worker, 'messages': messages} )
+                                'worker_i': i_worker, 'messages': messages, '_rotation': _rotation} )
                 
                 workers.append(worker)
                 worker.start()
@@ -500,7 +567,7 @@ class Movemeter:
 
 
         else:
-            results = target(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement)
+            results = target(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement, _rotation=_rotation)
         
 
         self.print_callback('Finished stack {}/{} in {} secods'.format(stack_i+1, len(self.stacks), time.time()-start_time))

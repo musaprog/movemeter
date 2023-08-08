@@ -1232,8 +1232,9 @@ class MovemeterTkGui(tk.Frame):
             color = self.colors.to_rgba(i_roi_group%self.colors.get_clim()[1])
             displacements = [np.sqrt(np.array(x)**2+np.array(y)**2) for x,y in result]
             
-            #for d in displacements[0:50]:
-            #    self.results_plotter.plot(d, ax_clear=False, color=color, lw=0.5)
+            N_toplot = max( len(displacements), 50 )
+            for d in displacements[0:N_toplot]:
+                self.results_plotter.plot(d, ax_clear=False, color=color, lw=0.5)
             
             self.results_plotter.plot(self.get_destructive_displacement_mean(result), ax_clear=False, color=color, lw=2)
 
