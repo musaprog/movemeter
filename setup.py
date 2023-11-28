@@ -24,7 +24,7 @@ setuptools.setup(
     description="A motion analysis tool",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/jkemppainen/movemeter",
+    url="https://github.com/musaprog/movemeter",
     packages=setuptools.find_packages(),
     install_requires=install_requires,
     classifiers=[
