@@ -96,7 +96,11 @@ class Movemeter:
         or total (compare_to_first=True) motion analysis result in pixel.
         This cropping the source image can increase performance a lot but too small
         values will truncated and underestimated results.
-    '''    
+    ''' 
+
+    measure_brightness_opt = {
+            'relative': ['absolute', 'roi', 'roimin'],
+            }
 
     def __init__(self, upscale=1, cc_backend='OpenCV', imload_backend='tifffile',
             absolute_results=False, tracking_rois=False, template_method='first',
@@ -460,7 +464,49 @@ class Movemeter:
         '''Runs rotation analysis
         '''
         return self.measure_movement(stack_i, optimized=False, _rotation=True)
-    
+   
+
+    def measure_brightness(self, stack_i, relative='roi'):
+        '''Measure brightness changes over time within the ROIs
+
+        relative :  None or string
+            If None (default) or "absolute", values are absolute.
+            If "roimin", report values relative to the minimum of each ROI.
+            If "roi", report values relative to each ROI (between 0 and 1)
+        '''
+        image_fns = self.stacks[stack_i]
+        ROIs = self.ROIs[stack_i]
+
+        results = [[[],[]] for roi in ROIs]
+        
+        for fn in image_fns:
+            for image in self._imread(fn):
+                for i_roi, roi in enumerate(ROIs):
+                    x,y,w,h = roi
+                    value = np.mean(image[y:y+h, x:x+w])
+
+                    results[i_roi][0].append(value)
+        
+        if relative is None or relative == "absolute":
+            pass
+        elif relative == "roimin":
+            for rresults in results:
+                divider = np.min(rresults[0])
+                rresults[0] = (np.array(rresults[0])/divider).tolist()
+        elif relative == "roi":
+            for rresults in results:
+                minval = np.min(rresults[0])
+                maxval = np.max(rresults[0])
+                rresults[0] = ((np.array(rresults[0])-minval)/maxval).tolist()
+        else:
+            raise ValueError(f"Unkown value for 'relative': {relative}")
+
+        # Dirty fix to brightness results to work with XY motion analysis code
+        for rresults in results:
+            rresults[1] = (np.array(rresults[0])*0).tolist()
+
+        return results
+
 
     def measure_movement(self, stack_i, max_movement=False, optimized=False, _rotation=False):
         ''' Run the translational movement analysis.

@@ -337,7 +337,7 @@ class MovemeterTkGui(tk.Frame):
         self.opview.grid(row=0, column=2, sticky='NSWE')
         
         self.tabs = Tabs(self.opview,
-                ['Style', 'ROI creation', 'Motion analysis'],
+                ['Style', 'ROI creation', 'Motion analysis', 'Brightness analysis'],
                 draw_frame = True)
         self.tabs.grid(row=0, column=1, columnspan=2, sticky='NSWE')
         self.tabs.set_page(1) 
@@ -445,13 +445,37 @@ class MovemeterTkGui(tk.Frame):
         self.movemeter_settings = MovemeterSettings(self.parview)
         self.movemeter_settings.grid(column=1,sticky='NSWE')
 
-        self.calculate_button = tk.Button(self.opview, text='Measure movement',
+ 
+
+        # Brightness
+        self.brightness_view = self.tabs.tabs[3]
+        self.brightness_view.columnconfigure(1, weight=1)
+        
+        self.brightness_tickboxes = {}
+        for name, options in self.movemeter.measure_brightness_opt.items():
+            frame = TickboxFrame(
+                    self.brightness_view, options, single_select=True)
+            frame.grid()
+            self.brightness_tickboxes[name] = frame
+
+
+
+        # ACTIONS FRAME
+        self.actframe = tk.LabelFrame(self.opview, text='Measure')
+        self.actframe.grid(row=1, column=1, columnspan=2)
+        
+        self.calculate_button = tk.Button(self.actframe, text='Movement',
                 command=self.measure_movement)
         self.calculate_button.grid(row=1, column=1)
+        
+        self.brightness_do_button = tk.Button(self.actframe, text='Brightness',
+                command=self.measure_brightness)
+        self.brightness_do_button.grid(row=1, column=2)
 
-        self.stop_button = tk.Button(self.opview, text='Stop',
+        self.stop_button = tk.Button(self.actframe, text='Stop',
                 command=self.stop)
-        self.stop_button.grid(row=1, column=2)
+        self.stop_button.grid(row=1, column=3)
+
 
 
         self.export_button = tk.Button(self.opview, text='Export results',
@@ -806,11 +830,14 @@ class MovemeterTkGui(tk.Frame):
             self.export_results(batch_name=self.batch_name)
 
 
-    def measure_movement(self):
+    def measure_movement(self, target=None):
         '''
         Run motion analysis for the images in the currently selected
         directory, using the drawn ROIs.
         '''
+
+        if target is None:
+            target = lambda: self.movemeter.measure_movement(0, optimized=True)
 
         if self.image_fns and self.roi_groups:
             print('Started roi measurements')
@@ -825,7 +852,7 @@ class MovemeterTkGui(tk.Frame):
                 images = [self._included_image_fns()]
                 self.movemeter.set_data(images, [rois])
                 
-                self.results.append( self.movemeter.measure_movement(0, optimized=True) )
+                self.results.append( target() )
             
             self.plot_results()
 
@@ -834,7 +861,14 @@ class MovemeterTkGui(tk.Frame):
 
         else:
             self.set_status('No images or ROIs selected')
+    
+    def measure_brightness(self):
+        kwargs = {}
+        for name, frame in self.brightness_tickboxes.items():
+            kwargs[name] = frame.ticked[0]
 
+        bmes = lambda: self.movemeter.measure_brightness(0, **kwargs)
+        self.measure_movement(target=bmes)
 
     @property
     def image_shape(self):
