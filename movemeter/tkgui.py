@@ -535,8 +535,8 @@ class MovemeterTkGui(tk.Frame):
         # Results show options
         self.results_plotter_opts = TickboxFrame(
                 self.resview,
-                ['show_individual', 'show_mean'],
-                defaults=[True,True],
+                ['show_individual', 'show_mean', 'show_toolbar'],
+                defaults=[True,True,False],
                 callback=self.plot_results)
         self.results_plotter_opts.grid(row=1, column=1, sticky='NSWE')
 
@@ -1268,6 +1268,10 @@ class MovemeterTkGui(tk.Frame):
         '''
         Plots (time, displacement).
         '''
+
+        self.results_plotter.set_toolbar_visibility(
+                'show_toolbar' in self.results_plotter_opts.ticked)
+
         self.results_plotter.ax.clear()
 
         for i_roi_group, result in enumerate(self.results):
