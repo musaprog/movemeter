@@ -531,7 +531,15 @@ class MovemeterTkGui(tk.Frame):
 
         self.results_plotter = CanvasPlotter(self.resview)
         self.results_plotter.grid(row=2, column=1, sticky='NSWE')
-        
+       
+        # Results show options
+        self.results_plotter_opts = TickboxFrame(
+                self.resview,
+                ['show_individual', 'show_mean'],
+                defaults=[True,True],
+                callback=self.plot_results)
+        self.results_plotter_opts.grid(row=1, column=1, sticky='NSWE')
+
         self.heatmap_plotter = CanvasPlotter(self.heatview)
         self.heatmap_plotter.grid(row=2, column=2, sticky='NSWE') 
         
@@ -1266,11 +1274,13 @@ class MovemeterTkGui(tk.Frame):
             color = self.colors.to_rgba(i_roi_group%self.colors.get_clim()[1])
             displacements = [np.sqrt(np.array(x)**2+np.array(y)**2) for x,y in result]
             
-            N_toplot = max( len(displacements), 50 )
-            for d in displacements[0:N_toplot]:
-                self.results_plotter.plot(d, ax_clear=False, color=color, lw=0.5)
+            if 'show_individual' in self.results_plotter_opts.ticked:
+                N_toplot = max( len(displacements), 50 )
+                for d in displacements[0:N_toplot]:
+                    self.results_plotter.plot(d, ax_clear=False, color=color, lw=0.5)
             
-            self.results_plotter.plot(self.get_destructive_displacement_mean(result), ax_clear=False, color=color, lw=2)
+            if 'show_mean' in self.results_plotter_opts.ticked:
+                self.results_plotter.plot(self.get_destructive_displacement_mean(result), ax_clear=False, color=color, lw=2)
 
 
     def _included_image_fns(self):
