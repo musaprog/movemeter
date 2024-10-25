@@ -677,12 +677,12 @@ class MovemeterTkGui(tk.Frame):
         self.N_frames = {}
         total_frames = 0
         for fn in self.image_fns:
-            if fn.endswith('.mp4'):
-                self.N_frames[fn] = len(self._imread(fn))
-                total_frames += self.N_frames[fn] - 1
+            N = len(self._imread(fn))
+            total_frames += N
+            if N > 1:
+                self.N_frames[fn] = N
 
-        N_images = len(self.image_fns) + total_frames
-        
+        N_images = total_frames
 
         self.images = [None for i in range(N_images)]
         self.mask_image = None
