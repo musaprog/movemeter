@@ -27,7 +27,7 @@ def rotate(image, degrees):
     return cv2.warpAffine(image, matrix, (shape[1], shape[0]))
 
 
-def _find_location(orig_im, ROI, orig_im_ref, max_movement=None, upscale=1):
+def find_location(orig_im, ROI, orig_im_ref, max_movement=None, upscale=1):
     '''
     Returns the location of orig_im, cropped with crop (x,y,w,h), in the location
     of orig_im_ref coordinates.
@@ -123,7 +123,7 @@ def _similarity(image1, image2, max_movement=None):
 
 
 
-def _find_rotation(orig_im, ROI, orig_im_ref, upscale=1,
+def find_rotation(orig_im, ROI, orig_im_ref, upscale=1,
                    max_movement=None, max_rotation=None,
                    round1_steps=36, extra_rounds=5, extra_round_steps=6):
     '''Rotates template along its center and checks the best rotation.

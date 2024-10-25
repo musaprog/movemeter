@@ -31,7 +31,7 @@ except ImportError:
 
 from .cc_backends import cc_backends, get_cc_backend
 from .im_backends import im_backends, get_im_backend
-from .version import version
+from .version import __version__
 from movemeter.stacks import stackread
 
 
@@ -151,7 +151,6 @@ class Movemeter:
         self.im_backend = imload_backend
         self.absolute_results = absolute_results
         self.tracking_rois = tracking_rois
-        #self.compare_to_first = compare_to_first           # removed in v0.6.0
         self.template_method = template_method
         self.subtract_previous = subtract_previous
         self.multiprocess = multiprocess
@@ -160,48 +159,10 @@ class Movemeter:
         self.max_movement = max_movement
         self.max_rotation = max_rotation
 
-        # IMAGE LOADING BACKEND
-        self.imload_args = []
-        if imload_backend == 'OpenCV':
-            import cv2
-            self.imload = cv2.imread
-            self.imload_args.append(-1)
+        # Cross-correlation backend
+        self._find_location, self._find_rotation = get_cc_backend(
+                cc_backend)
 
-        elif imload_backend == 'tifffile':
-            import tifffile
-            self.imload = tifffile.imread
-
-        elif callable(imload_backend):
-            self.imload = imload_backend 
-
-        else:
-            raise ValueError('Given backend {} is not "OpenCV" or "tifffile" or a callable'.format(print(imload_backend)))
-        
-        
-        # CROSS CORRELATION BACKEND        
-        if cc_backend == 'OpenCV':
-            from .cc_backends.opencv import _find_location, _find_rotation
-            self._find_location = _find_location
-            self._find_rotation = _find_rotation
-       
-
-
-    @staticmethod
-    def _find_location(im, ROI, im_ref):
-        '''
-        This method is to be overwritten by any cross-correlation backend that is loaded.
-        
-        Parameters
-        ----------
-        im
-            Image
-        ROI : tuple of int
-            (x,y,w,f)
-        im_ref
-            Reference image
-        '''
-        raise NotImplementedError('_find_location (a method in Movemeter class) needs to be overridden by the selected cc_backend implementation.')
-    
 
     def _imread(self, fn):
         '''Wraps the image loading backend (self._imload).
@@ -218,10 +179,14 @@ class Movemeter:
             valid images
         '''
 
-        # Check the appropriate action
+        # Image loading backend
+        if self.im_backend == "stackread":
+            imload = stackread
+        else: 
+            imload = get_im_backend(imload_backend)
 
         if isinstance(fn, str):
-            return stackread(fn)
+            return imload(fn)
         elif isinstance(fn, np.ndarray):
             return fn
         elif hasattr(fn, '__iter__') or hasattr(fn, '__getitem__'):
