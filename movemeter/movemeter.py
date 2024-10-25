@@ -15,7 +15,10 @@ import multiprocessing
 import warnings
 import types
 
-import exifread
+try:
+    import exifread
+except ImportError:
+    exifread = None
 import numpy as np
 import cv2
 try:
@@ -745,7 +748,8 @@ class Movemeter:
         # FIXME - Instead of using exifread here, we should
         # implement metadata reading (using exifread or something else)
         # in the image loading backends
-
+        if exifread is None:
+            return {}
         with open(self.stacks[stack_i][image_i], 'rb') as fp:
             tags = exifread.process_file(fp)
 
