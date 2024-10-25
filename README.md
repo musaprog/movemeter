@@ -38,6 +38,7 @@ To open the graphical user interface, simply
 python -m movemeter.tkgui
 ```
 
+For further details, please see our [Online Documentation](https://musaprog.github.io/docs/movemeter/)
 
 <h2>Other</h2>
 Movemeter is still a rather early and unfinished program.
