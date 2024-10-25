@@ -1,9 +1,12 @@
-'''
-Contains the Movemeter class for analysing translational movement from a time series
-of images.
+'''Movemeter Python API
 
-Under the hood, it uses OpenCV's template matching (normalized cross-correlation,
-cv2.TM_CCOEFF_NORMED). Also other backends are supported (but currently, not implemeted).
+The Movemeter class here does cross-correlation (or template matching)
+based motion analysis. You can use it in your own Python programs.
+
+Alternatives
+------------
+For graphical user interface, use tkgui.py
+For direct command line use, use cli.py
 '''
 
 import os
@@ -15,7 +18,6 @@ import types
 import exifread
 import numpy as np
 import cv2
-
 try:
     # Optional dependency to scipy, used only for preblurring
     # (Movemeter.preblur)
@@ -24,44 +26,62 @@ except ImportError:
     scipy = None
     warnings.warn('cannot import scipy.ndimage; Movemeter preblur not available')
 
-
+from .cc_backends import cc_backends, get_cc_backend
+from .im_backends import im_backends, get_im_backend
+from .version import version
 from movemeter.stacks import stackread
 
+
+__license__ = "GPLv3-only"
+# __version__ imported below
+
+
+
 class Movemeter:
-    '''Analysing translational movement from time series of images.
+    '''A Python API for motion analysis.
 
-    Common work flow:
-        1) Create a Movemeter object by
-                meter = Movemeter()
+    Movemeter analyses mainly translational motion using 2D
+    cross-correlation (aka. template matching). Brightness analysis and
+    rotational movement analysis are also supported.
 
-        2) set_data: Set images and ROIs (regions of interest)
-                meter.set_data(image_stacks, ROIs)
+    The actual motion analaysis is performed by an backend (default
+    the opencv backend). Similarly, there are backends for image
+    loading.
 
-        3) measure_movement: Returns the movement data
-                meter.measure_movement()
+
+    Example
+    -------
+        meter = Movemeter()                 # Create instance
+        meter.set_data(image_stacks, ROIs)  # Set data and ROIs
+        meter.measure_movement(0)           # Run analysis on stack 0
+
+    Many of the attributes can be set at the init or then
+    modified after the meter is created.
+
+    The set_data(stacks, ROIs) can be hard to get right - see its
+    docstring for more clarification
 
 
     Attributes
     ----------
-    upscale : int
-        Amount to upscale during movement analysing, passed to the cc backend
+    upscale : int or float
+        Image upscaling used in motion analysis. Enables subpixel
+        resolution. For example, with the upscale value 10, the smallest
+        reportable motion step is 1/10 of a pixel. Higher are slow down
+        the analysis and use more RAM memory.
     cc_backend : string
-        Movement analysis backend. Currently only "OpenCV"
-    im_backend : string
-        Image loading backend. "OpenCV" or "tifffile",
-        or a callable that takes in an image filename and returns a 2D numpy array.
-
-        Note:
-        tifffile supports multipage images (many frames/images in a single file) and
-        OpenCV doesn't.
-
+        Motion analysis backend. "OpenCV"
+    im_backend : string or callable
+        Image loading backend. If string, "stackread",
+        "OpenCV" or "tifffile".
     absolute_results : bool
-        Return results in absolute image coordinates
+        If True, return results in absolute image coordinates. If false,
+        returns results relative to the corresponding ROI.
     tracking_rois : bool
-        If True, ROIs are shifted between frames, following the movement
+        If True, ROIs are shifted between frames, following the moving
+        features. If False, the ROIs are stationary.
     template_method : string
-        How to create the template image used in the motion analysis that
-        is based on template matching.
+        Template image creation method used in the motion analysis.
 
         If string:
         'first': Use the first image (default)
@@ -82,35 +102,47 @@ class Movemeter:
         Special treatment for when there's a faint moving feature on a static
         background.
     multiprocess : int
-        If 0 then no multiprocessing. Otherwise the number of parallel processes.
-        Note that there may be some multiprocessing already at the cc_backend level.
-        If used, avoid adding any non-pickable or heavy attributes to this class objects.
+        If 0 then no multiprocessing. Otherwise, the number of parallel
+        processes. Note that there may be some multiprocessing alread
+        at the cc_backend level. If used, avoid adding any non-pickable
+        or heavy attributes to the instances of this class.
     print_callback : callable
         Print function to convey the progress.
         By default, this is the built-in print function.
     preblur : False or float
-        Standard deviation of the Gaussian blur kernel, see scipy.ndimage.gaussian_filter
-        Requires an optional dependency to scipy.
+        Standard deviation of the Gaussian blur kernel, see
+        scipy.ndimage.gaussian_filter Requires an optional dependency
+        to scipy to work.
     max_movement : None or int
-        If not None, in pixels, the maximum expected per-frame (compare_to_first=False)
-        or total (compare_to_first=True) motion analysis result in pixel.
-        This cropping the source image can increase performance a lot but too small
-        values will truncated and underestimated results.
+        If not None, in pixels, the maximum expected per-frame
+        (compare_to_first=False) or total (compare_to_first=True) motion
+        analysis result in pixel. Essentially crops the source image
+        around the ROI. Use leads to increased performance reliability.
+        Too small values small values will truncated and underestimated
+        motion, too large can wrong matches.
     ''' 
 
     measure_brightness_opt = {
             'relative': ['absolute', 'roi', 'roimin'],
             }
 
-    def __init__(self, upscale=1, cc_backend='OpenCV', imload_backend='tifffile',
-            absolute_results=False, tracking_rois=False, template_method='first',
-            subtract_previous=False, multiprocess=False, print_callback=print,
-            preblur=0, max_movement=None, max_rotation=None):
-        '''
-        See Class docstring for documentation
-        '''
+    def __init__(
+            self,
+            upscale=1,
+            cc_backend='OpenCV',
+            imload_backend='stackread',
+            absolute_results=False,
+            tracking_rois=False,
+            template_method='first',
+            subtract_previous=False,
+            multiprocess=False,
+            print_callback=print,
+            preblur=0,
+            max_movement=None,
+            max_rotation=None
+            ):
 
-        # Set the options given in constructor to same name attributes
+        # Initialize attributes to defaults or given values
         self.upscale = upscale
         self.cc_backend = cc_backend
         self.im_backend = imload_backend
@@ -169,15 +201,18 @@ class Movemeter:
     
 
     def _imread(self, fn):
-        '''
-        Wrapper for self.imload (that depends on the image load backed).
-
-        Verifies the dimensionality of the loaded data and normalizes 
-        the image to float32 range.
-
+        '''Wraps the image loading backend (self._imload).
         
-        Returns dim=3 numpy array where axis=0 is the number of pages (images)
-        in the tiff file.
+        Arguments
+        ---------
+        fn : string
+            Filename of the stack or image to read.
+
+        Returns
+        -------
+        stack : iterable
+            Returns something that when you iterate over it, it returns
+            valid images
         '''
 
         # Check the appropriate action
@@ -191,33 +226,49 @@ class Movemeter:
         else:
             print(f'Warning! Unkown fn: {fn}')
             return fn
-        # Check if the image file is actually a stack of many images.
-        #if len(image.shape) == 3:
-        #    pass
-        #else:
-        #    image = [image]
-       
-        # Normalize values to interval 0...1000
-        # FIXME Is the range 0...1000 optimal?
-
-        #for i in range(len(image)):
-        #    image[i] -= np.min(image[i])
-        #    image[i] = (image[i] / np.max(image[i])) * 1000
-        #    image[i] = image[i].astype(np.float32)
-
-        #    if self.preblur and scipy:
-        #        image[i] = scipy.ndimage.gaussian_filter(image[i], sigma=self.preblur)
-        
-        #if not isinstance(image, list):
-        #    image = image.astype(np.float32)
 
         return image
 
+    def _im_preprocess(image):
+        '''Peform preprocessing on the image before the cc backend
+
+        FIXME: Not currently called from anywhere in the code
+        '''
+        # FIXME Normalization not sure if needed
+        normalize = False
+        if normalize:
+            image[i] -= np.min(image[i])
+            image[i] = (image[i] / np.max(image[i])) * 1000
+            image[i] = image[i].astype(np.float32)
+
+        if self.preblur and scipy:
+            image[i] = scipy.ndimage.gaussian_filter(
+                    image[i], sigma=self.preblur)
+        
+        return image
+       
     
     def create_mask_image(self, image_fns):
-        '''
-        Create a mask image that is subtracted from the images to enhance moving features
-        Seems to work well with X-ray data.
+        '''Creates a min-mask image
+
+        The problem sometimes with cross-correlation analysis is that
+        the moving features are semi-transparent or faint while there's
+        a stationary, strong-featured background.
+
+        Subtracting the min-mask image of a stack can be used to remove
+        some stationary features -> Working motion detection.
+
+        Seems to work well with microsaccades X-ray projections data.
+
+        Arguments
+        ---------
+        image_fns : list of strings
+            Filenames of the images in the stack
+
+        Returns
+        -------
+        mask_image : 2D numpy array
+            Min image of the stack
         '''
 
         mask_image = self._imread(image_fns[0])
@@ -230,16 +281,11 @@ class Movemeter:
         return mask_image
 
 
-    def _measure_movement_optimized_xray_data(self, image_fns, ROIs,
-            max_movement=False, results_list=None, worker_i=0, messages=[],
+    def _measure_movement_optimized_xray_data(
+            self, image_fns, ROIs, max_movement=False,
+            results_list=None, worker_i=0, messages=[],
             _rotation=False):
-        '''
-        Optimized version when there's many rois and subtract previous
-        is True and compare_to_first is False.
-        
-        Optimized version of measure_movement for scenarios when there are
-        many ROIs
-
+        '''Optimized version for many ROIs (once iterate over images)
         '''
 
         results = []
@@ -331,10 +377,10 @@ class Movemeter:
 
 
     def _measure_movement(self, image_fns, ROIs, max_movement=False, _rotation=False):
-        '''
-        Generic way to analyse movement using _find_location.
-        
-        Could be overridden by a cc_backend.
+        '''Measure movement for 1 or few ROIs.
+
+        This vanilla version is there just to check that the optimized
+        version works.
         '''
        
         results = []
@@ -429,50 +475,90 @@ class Movemeter:
 
 
     def set_data(self, stacks, ROIs):
-        ''' Set image filenames and regions to be analysed.
+        ''' Set stack filenames and ROIs (regions of interest) to be analysed.
 
-        Parameters
-        ----------
-        stacks : list
-            List of filename lists: [ [stack1_im1, stack1_im2...],[stack2_im1, stack2_im2], ...]
-        ROIs : list
-            [[ROI1_for_stack1, ROI2_for_stack1, ...], [ROI1_for_stack2, ...],...].
-            ROIs's length is 1 means same ROIs for all stacks
+        Arguments
+        ---------
+        stacks : list of lists of filenames
+            List of filename lists. In format
+            [
+              [stack1_im1, stack1_im2...],
+              [stack2_im1, stack2_im2], ...
+            ]
+        ROIs : list of lists of ROIs
+            [
+              [ROI1_for_stack1, ROI2_for_stack1, ...],
+              [ROI1_for_stack2, ...], ...
+            ]
+
             ROI format: (x, y, w, h)
-        '''
         
+            If the list has length, it means use the same provided
+            ROIs for all stacks.
+
+        Example 1 - One stack made separate images, one roi
+        ----------------------------------------------------
+            stacks = [['frame1.tif', 'frame2.tif', ...]]
+            ROIs = [[(0,0,24,24)]]
+
+        Example 2 - One stack actually one stack on disk, two rois
+        ----------------------------------------------------------
+            stacks = [['stack.tif']]
+            ROIs = [[(0,0,24,24), (24,24,24,24)]]
+
+        '''
+        N_rois = len(ROIs)
+        N_stacks = len(stacks)
+ 
+        # A) Stacks
+        # FIXME: Validity checks for stacks
         self.stacks = stacks
-        # DETERMINE
+        
+        # B) Determine ROIs relationship to the stacks
         self.print_callback('Determining stack/ROI relationships in movemeter')
-        if len(ROIs) > 1:
+        if N_rois > 1:
             # Separate ROIs for each stack
             self.ROIs = ROIs
-        
-        if len(ROIs) == 1:
+        elif N_rois == 1:
             # Same ROIs for all the stacks
-            
-            self.ROIs = [ROIs[0] for i in range(len(stacks))]
-            
-        elif len(ROIs) != len(stacks):
-            raise ValueError("Movemeter.setData: stacks ({}) and ROIs ({}) has to have same length OR ROIs's length has to be 1".format(len(stacks), len(ROIs)))
+            self.ROIs = [ROIs[0] for i in range(len(stacks))]    
+        elif N_rois != N_stacks:
+            raise ValueError(
+                    f"Stacks and ROIs lenghts do not match ({N_stacks} vs {N_rois})")
         
-        # ensure ROIs to ints
+        # Make all ROIs into ints
         self.ROIs = [[[int(x), int(y), int(w), int(h)] for x,y,w,h in ROI] for ROI in self.ROIs]
 
     
-    def measure_rotation(self, stack_i):
-        '''Runs rotation analysis
+    def measure_rotation(self, stack_i, optimized=False):
+        '''Measures rotation changes over time within the ROIs
+
+        Arguments
+        ---------
+        stacks_i : int
+            The index of the stack to analyse (order as in set_data)
+        optimized : bool
+            Run the optimized version for many ROIs (experimental)
         '''
-        return self.measure_movement(stack_i, optimized=False, _rotation=True)
+        return self.measure_movement(
+                stack_i, optimized=optimized, _rotation=True)
    
 
     def measure_brightness(self, stack_i, relative='roi'):
-        '''Measure brightness changes over time within the ROIs
+        '''Measures brightness changes over time within the ROIs
+        
+        Brightness measurement is independent of the cross-correlation
+        backends.
 
-        relative :  None or string
-            If None (default) or "absolute", values are absolute.
-            If "roimin", report values relative to the minimum of each ROI.
-            If "roi", report values relative to each ROI (between 0 and 1)
+        Arguments
+        ---------
+        stack_i : int
+            The index of the stack to analyse (order as in set_data)
+        relative : string or None
+            How to report the brightness change calues.
+            If None or "absolute", values are absolute.
+            If "roimin", values relative to the minimum of each ROI.
+            If "roi", values relative to each ROI (between 0 and 1)
         '''
         image_fns = self.stacks[stack_i]
         ROIs = self.ROIs[stack_i]
@@ -501,7 +587,8 @@ class Movemeter:
         else:
             raise ValueError(f"Unkown value for 'relative': {relative}")
 
-        # Dirty fix to brightness results to work with XY motion analysis code
+        # Dirty fix to brightness results to work with XY motion
+        # analysis based code elsewhere (add zero y component)
         for rresults in results:
             rresults[1] = (np.array(rresults[0])*0).tolist()
 
@@ -509,37 +596,36 @@ class Movemeter:
 
 
     def measure_movement(self, stack_i, max_movement=False, optimized=False, _rotation=False):
-        ''' Run the translational movement analysis.
+        '''Measures translational movement over time within the ROIs.
 
-        Image stacks and ROIs are expected to be set before using set_data method.
-        See class attributes.
-
-        Note
-        ----
-            Ordering is quaranteed to be same as when setting data in Movemeter's setData
-        
-        Parameters
-        ----------
+        Arguments
+        ---------
         stack_i : int
-            Analyse stack with index stack_i (order according what set to set_data method)
+            The index of the stack to analyse (order as in set_data)
         max_movement : int
-            Speed up the computation by specifying the maximum translation between
-            subsequent frames, in pixels. If not specified use self.max_movement
+            Speed up the computation (and increase reliability) by
+            specifying the maximum translation between subsequent frames,
+            in pixels. If not specified, uses self.max_movement
         optimized : bool
-            Experimental, if true use reversed roi/image looping order.
+            Run the optimized version for many ROIs (experimental)
 
         Returns
         -------
-        results_stack_i
-            [results_ROI1_for_stack_i, results_ROI2_for_stack_i, ...]
-            where results_ROIj_for_stack_i = [movement_points_in_X, movement_points_in_Y]
+        results_stack_i : list of lists
+            [
+              results_ROI1, results_ROI2, ...
+            ]
+            
+            results_ROIj = [movement_points_in_X, movement_points_in_Y]
 
         '''
         if not max_movement:
             max_movement = self.max_movement
 
         start_time = time.time()
-        self.print_callback('Starting to analyse stack {}/{}'.format(stack_i+1, len(self.stacks)))
+        self.print_callback(
+                'Starting to analyse stack {}/{}'.format(
+                    stack_i+1, len(self.stacks)))
         
         # Select target _measure_movement
         if optimized:
@@ -550,15 +636,17 @@ class Movemeter:
 
         if self.multiprocess:
         
+            # -----------------------------
             # Temporary EOFError fix:
-            # When starting new processeses the whole
-            # Movemeter class ends up pickeld. Because print_callback in tkgui
-            # is set to some tkinter object, the whole tkinter session gets
-            # pickled. On Windows for some reason, this cannot be pickeld.
+            # When starting new processes, the whole
+            # Movemeter class ends up pickled. Because print_callback in
+            # tkgui is set to some tkinter object, the whole tkinter
+            # session gets pickled. On Windows, for some reason, this
+            # object cannot be pickeld.
             #
-            # While this works now, this is not a good fix because if anyone
-            # adds something unpickable to a Movemeter object, the same
-            # happens again.
+            # While this works now, this is not a good fix because if
+            # anyone adds something unpickable to a Movemeter object,
+            # the same error happens again.
             #
             print_callback = self.print_callback
             self.print_callback = None
@@ -584,17 +672,24 @@ class Movemeter:
                 else:
                     worker_ROIs = self.ROIs[stack_i][i_worker*work_chunk:(i_worker+1)*work_chunk]
                 
-                worker = multiprocessing.Process(target=target,
+                worker = multiprocessing.Process(
+                        target=target,
                         args=[self.stacks[stack_i], worker_ROIs],
-                        kwargs={'max_movement': max_movement, 'results_list': results_list,
-                                'worker_i': i_worker, 'messages': messages, '_rotation': _rotation} )
+                        kwargs={
+                            'max_movement': max_movement,
+                            'results_list': results_list,
+                            'worker_i': i_worker,
+                            'messages': messages,
+                            '_rotation': _rotation}
+                        )
                 
                 workers.append(worker)
                 worker.start()
 
             # Wait until all workers get ready
             for i_worker, worker in enumerate(workers):
-                print_callback('Waiting worker #{} to finish'.format(i_worker+1))
+                print_callback('Waiting worker #{} to finish'.format(
+                    i_worker+1))
                 while worker.is_alive():
                     if messages:
                         print_callback(messages[-1])
@@ -607,36 +702,49 @@ class Movemeter:
             for worker_results in results_list:
                 results.extend(worker_results)
 
-            # FIX EOFError, see above
+            # -----------------------------
+            # FIX EOFError, latter part, see above
             self.print_callback = print_callback
-            # ---------------
+            # -----------------------------
 
 
         else:
-            results = target(self.stacks[stack_i], self.ROIs[stack_i], max_movement=max_movement, _rotation=_rotation)
+            # So nice and simple without multiprocessing ;)
+            results = target(
+                    self.stacks[stack_i],
+                    self.ROIs[stack_i],
+                    max_movement=max_movement,
+                    _rotation=_rotation
+                    )
         
-
-        self.print_callback('Finished stack {}/{} in {} secods'.format(stack_i+1, len(self.stacks), time.time()-start_time))
+        self.print_callback(
+                'Finished stack {}/{} in {} seconds'.format(
+                    stack_i+1, len(self.stacks), time.time()-start_time))
 
         return results 
 
     
 
     def get_metadata(self, stack_i, image_i=0):
-        '''Get metadata for stack number stack_i using exifread.
+        '''Get metadata for stack number stack_i.
         
-        Parameters
-        ----------
+        Arguments
+        ---------
         stack_i : int
-            Index of the stack (set_data)
+            The index of the stack to analyse (order as in set_data)
         image_i : int
-            Index of the image
+            Optionally, the index of the image from which to read
+            the metadata from. Can be different especially if stack
+            is made of separate images on disk.
 
         Returns
         -------
         tags: dict
             A dictionary of exifread objects. See exifread documentation.
         '''
+        # FIXME - Instead of using exifread here, we should
+        # implement metadata reading (using exifread or something else)
+        # in the image loading backends
 
         with open(self.stacks[stack_i][image_i], 'rb') as fp:
             tags = exifread.process_file(fp)
@@ -645,23 +753,22 @@ class Movemeter:
     
 
     def get_image_resolution(self, stack_i):
-        '''
-        Returns resolution of the images in stack_i.
+        '''Returns resolution of the images in stack_i.
 
-        Note
-        ----
-            Currently opens the first image to see the resolution (slow).
-            Would be better to read from the metadata directly
+        Currently opens the first image to see the resolution (slow).
+        Would be better to read from the metadata directly...
         
-        Parameters
+        Arguments
         ----------
         stack_i : int
-            Index of the stack (set_data)
+            The index of the stack to analyse (order as in set_data)
 
         Returns
         -------
         width : int
+            Width of the image, in pixels
         height : int
+            Height of the image, in pixels
 
         '''
         height, width = self._imread(self.stacks[stack_i][0])[0].shape
