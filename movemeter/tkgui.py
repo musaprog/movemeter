@@ -200,7 +200,7 @@ class MovemeterTkGui(tk.Frame):
         tkinter parent widget
 
     folders : list
-        List of opened directories
+        List of opened directories and image stack files
     folders_listbox : object
         tk_steroids Listbox of opened directories
     current_folder : string
@@ -267,7 +267,8 @@ class MovemeterTkGui(tk.Frame):
         self.menu = tk.Menu(self)
         
         filemenu = tk.Menu(self)
-        filemenu.add_command(label='Add directory...', command=self.open_directory)
+        filemenu.add_command(label='Add stack...', command=self.open_stack)
+        filemenu.add_command(label='Add folder...', command=self.open_directory)
         filemenu.add_separator()
         filemenu.add_command(label='Load ROIs',
                 command=lambda: self.apply_movzip(rois=True))
@@ -325,10 +326,10 @@ class MovemeterTkGui(tk.Frame):
         self.folders_listbox.grid(row=2, column=1, columnspan=2, sticky='NSWE')
 
         self.imview_buttons = ButtonsFrame(self.folview,
-                ['Add...', 'Remove', 'FS'],
-                [self.open_directory, self.remove_directory, self.set_fs])
+                ['Add stack...', 'Add folder...', 'Remove', 'FS'],
+                [self.open_stack, self.open_directory, self.remove_directory, self.set_fs])
         self.imview_buttons.grid(row=0, column=1) 
-        self.fs_button = self.imview_buttons.buttons[2]
+        self.fs_button = self.imview_buttons.buttons[3]
         self.set_fs(fs=self.fs)
 
         # Operations view
@@ -603,32 +604,67 @@ class MovemeterTkGui(tk.Frame):
         raise NotImplementedError
 
 
+    def _get_previous_directory(self):
+        try: 
+            with open(os.path.join(MOVEDIR, 'last_directory.txt'), 'r') as fp:
+                previous_directory = fp.read().rstrip('\n')
+        except FileNotFoundError:
+            previous_directory = os.getcwd()
+
+        if os.path.exists(previous_directory):
+            return previous_directory
+        return None
+
+    def _set_previous_directory(self, directory):
+        if not os.path.isdir(MOVEDIR):
+            os.makedirs(MOVEDIR)
+        with open(os.path.join(MOVEDIR, 'last_directory.txt'), 'w') as fp:
+            fp.write(directory)
+         
+
+    def open_stack(self, stack_fn=None):
+        '''Add a stack on the list of input folders
+
+        Similar to open_directory but let's to select a stack
+        from folder instead of all the folder's contents
+        '''
+
+        if stack_fn is None:
+            previous_dir = self._get_previous_directory()
+
+            stack_fn = filedialog.askopenfilename(
+                title='Select an image stack',
+                initialdir=previous_dir)
+        
+        if stack_fn:
+            self._set_previous_directory(
+                    os.path.dirname(stack_fn))
+            
+            self.set_status(f'Added a new stack {stack_fn}')
+            
+            self.folders.append(stack_fn)
+            self.folders_listbox.set_selections(self.folders)
+            self.folder_selected(stack_fn, usermade=False)
+
+
+
     def open_directory(self, directory=None):
         '''
         Open a dialog to select a data directory and adds it to the
         list of open directories.
         '''
         if directory is None:
-            try: 
-                with open(os.path.join(MOVEDIR, 'last_directory.txt'), 'r') as fp:
-                    previous_directory = fp.read().rstrip('\n')
-            except FileNotFoundError:
-                previous_directory = os.getcwd()
+            previous_dir = self._get_previous_directory()
 
-            print(previous_directory)
-
-            if os.path.exists(previous_directory):
-                directory = filedialog.askdirectory(title='Select directory with the images', initialdir=previous_directory)
-            else:
-                directory = filedialog.askdirectory(title='Select directory with the images')
+            directory = filedialog.askdirectory(
+                    title='Select directory with the images',
+                    initialdir=previous_dir)
             
             
         if directory:
-            if not os.path.isdir(MOVEDIR):
-                os.makedirs(MOVEDIR)
-            with open(os.path.join(MOVEDIR, 'last_directory.txt'), 'w') as fp:
-                fp.write(directory)
-            
+           
+            self._set_previous_directory(directory)
+
             # Check if folder contains any images; If not and it contains folders, append
             # The folders in this folder
 
@@ -646,7 +682,7 @@ class MovemeterTkGui(tk.Frame):
             for directory in directories:
                 self.folders.append(directory)
                 self.folders_listbox.set_selections(self.folders)
-                self.folder_selected(directory)
+                self.folder_selected(directory, usermade=False)
 
     
     def remove_directory(self):
@@ -659,20 +695,30 @@ class MovemeterTkGui(tk.Frame):
         self.set_status('Closed directory {}'.format(self.current_folder))
 
 
-    def folder_selected(self, folder):
+    def folder_selected(self, folder, usermade=True):
         '''
         When the user selects a folder from the list of open data
         directories (that is self.folders_listbox)
+
+        Arguments
+        ---------
+        usermade : bool
+            If true, update the status bar
         '''
         
         self.current_folder = folder
 
-        print('Selected folder {}'.format(folder))
-
-        self.image_fns = [os.path.join(folder, fn) for fn in os.listdir(folder) if fn.endswith(self.filename_extensions)]
-
-        self.image_fns.sort()
-        
+        if os.path.isdir(folder):
+            # Folder of separate image frame files
+            if usermade:
+                self.set_status('Selected folder {}'.format(folder))
+            self.image_fns = [os.path.join(folder, fn) for fn in os.listdir(folder) if fn.endswith(self.filename_extensions)]
+            self.image_fns.sort()
+        else:
+            # One image stack files
+            if usermade:
+                self.set_status(f'Selected stack {folder}')
+            self.image_fns = [folder]
 
         self.N_frames = {}
         total_frames = 0
@@ -759,7 +805,8 @@ class MovemeterTkGui(tk.Frame):
             if movzip:
                 settings, filenames, selections, rois, movements = self._load_movzip(os.path.join(root, movzip[0]))
                 
-                self.folder_selected(os.path.dirname(filenames[0]))
+                self.folder_selected(
+                        os.path.dirname(filenames[0]), usermade=False)
                 
                 x1, y1 = np.min(rois, axis=0)[0:2]
                 x2, y2 = np.max(rois, axis=0)[0:2] + rois[0][3]
@@ -794,7 +841,8 @@ class MovemeterTkGui(tk.Frame):
             if movzip:
                 settings, filenames, self.selections, self.roi_groups, self.results = self._load_movzip(os.path.join(root, movzip[0])) 
                 
-                self.folder_selected(os.path.dirname(filenames[0]))
+                self.folder_selected(
+                        os.path.dirname(filenames[0]), usermade=False)
                 self.set_settings(settings)
 
                 self.plot_results()
@@ -829,7 +877,7 @@ class MovemeterTkGui(tk.Frame):
         for folder in self.folders:
             if self.exit:
                 break
-            self.folder_selected(folder)
+            self.folder_selected(folder, usermade=False)
             
             if fill_maxgrid:
                 self.fill_grid()
