@@ -28,15 +28,36 @@ def rotate(image, degrees):
 
 
 def find_location(orig_im, ROI, orig_im_ref, max_movement=None, upscale=1):
-    '''
-    Returns the location of orig_im, cropped with crop (x,y,w,h), in the location
-    of orig_im_ref coordinates.
+    '''Runs translational motion analysis two images.
 
-    orig_im         Image
-    ROI            Crop of the orig_im
-    orig_im_ref     Reference image
+    Returns the location of orig_im, cropped with crop (x,y,w,h),
+    in the location of orig_im_ref coordinates.
+
+    Arguments
+    ---------
+    orig_im : numpy array
+        The N+1 image
+    ROI : sequence of ints, sequence of floats
+        Crop of the orig_im (x,y,w,h)
+    orig_im_ref : numpy array
+        Reference or the template N image
+    max_movement : int
+        Maximum allowed displacement for increased
+        reliability and speed
+    upscale : float
+        Upscaling of images for better resolution
+
+    Returns
+    -------
+    x, y : float
+        Cross-correlated X and Y translations between
+        the images.
     '''
     cx,cy,cw,ch = ROI
+    cx = int(round(cx))
+    cy = int(round(cy))
+    cw = int(round(cw))
+    ch = int(round(ch))
 
     if max_movement:
         max_movement = int(max_movement)
@@ -133,6 +154,17 @@ def find_rotation(orig_im, ROI, orig_im_ref, upscale=1,
 
     Arguments
     ---------
+    orig_im : numpy array
+        The N+1 image
+    ROI : sequence of ints, sequence of floats
+        Crop of the orig_im (x,y,w,h)
+    orig_im_ref : numpy array
+        Reference or the template N image
+    upscale : float
+        Upscaling of images for better resolution
+    max_movement : int
+        Maximum allowed displacement for increased
+        reliability and speed
     max_rotation : float or int
         In degrees, how many degrees is the total range of rotation
         to be checked. Between 0 and 360 degrees.
@@ -155,6 +187,11 @@ def find_rotation(orig_im, ROI, orig_im_ref, upscale=1,
         b =  max_rotation / 2.
     
     cx,cy,cw,ch = ROI
+    cx = int(round(cx))
+    cy = int(round(cy))
+    cw = int(round(cw))
+    ch = int(round(ch))
+
     # Squarify to the largest square that fits in the ROI
     if cw != ch:
         if cw > ch:

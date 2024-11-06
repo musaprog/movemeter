@@ -294,8 +294,11 @@ class Movemeter:
 
                     
                     if not _rotation:
-                        x, y = self._find_location(image, ROI, previous_image, 
-                                max_movement=max_movement, upscale=self.upscale)
+                        x, y = self._find_location(
+                                image, ROI,
+                                previous_image, 
+                                max_movement=max_movement,
+                                upscale=self.upscale)
 
                         X[i_roi].append(x)
                         Y[i_roi].append(y)
@@ -303,12 +306,15 @@ class Movemeter:
                         if self.tracking_rois:
                             ROIs[i_roi] = [x, y, ROI[2], ROI[3]]
 
-                        print('{} {}'.format(x,y))
                     else:
                         r = self._find_rotation(
-                                image, [int(c) for c in ROI], previous_image, max_movement=max_movement, upscale=self.upscale, max_rotation=self.max_rotation)
+                                image, ROI,
+                                previous_image,
+                                max_movement=max_movement,
+                                upscale=self.upscale,
+                                max_rotation=self.max_rotation)
+
                         R.append(r)
-                        print(r)
 
                        
                
@@ -402,8 +408,12 @@ class Movemeter:
                         image = image - mask_image
                     
                     if not _rotation:
-                        x, y = self._find_location(image, [int(c) for c in ROI], previous_image, 
-                                max_movement=max_movement, upscale=self.upscale)
+                        x, y = self._find_location(
+                                image, ROI,
+                                previous_image, 
+                                max_movement=max_movement,
+                                upscale=self.upscale)
+
                         X.append(x)
                         Y.append(y)
 
@@ -412,12 +422,15 @@ class Movemeter:
                             #raise NotImplementedError
                             ROI = [x, y, ROI[2], ROI[3]]
 
-                        print('{} {}'.format(x,y))
                     else:
                         r = self._find_rotation(
-                                image, [int(c) for c in ROI], previous_image, max_movement=max_movement, upscale=self.upscale, max_rotation=self.max_rotation)
+                                image, ROI,
+                                previous_image,
+                                max_movement=max_movement,
+                                upscale=self.upscale,
+                                max_rotation=self.max_rotation)
+
                         R.append(r)
-                        print(r)
 
                     i_frame += 1
 
