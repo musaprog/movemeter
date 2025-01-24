@@ -716,7 +716,15 @@ class MovemeterTkGui(tk.Frame):
         self.folders_listbox.set_selections(self.folders)
 
         self.set_status('Closed directory {}'.format(self.current_folder))
+   
 
+    def clear_directories(self):
+        '''Clear all added stacks and folders
+        '''
+        self.folders = []
+        self.folders_listbox.set_selections([])
+
+        
 
     def folder_selected(self, folder, usermade=True):
         '''
