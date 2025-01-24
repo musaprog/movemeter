@@ -189,6 +189,81 @@ class MovemeterSettings(tk.Frame):
         return {**self.tickboxes.states, **settings}
 
 
+class MovemeterMenubar:
+    '''Add the movemeter top menu to the application
+
+    The parent widget has to be MovemeterTkGUI widget with methods
+    like open_stack, open_directory etc.
+    '''
+
+    def __init__(self, parent):
+
+        self.parent = parent
+
+        self.menu = tk.Menu(parent)
+        
+        filemenu = tk.Menu(parent)
+        filemenu.add_command(
+                label='Add stack...', command=parent.open_stack)
+        filemenu.add_command(
+                label='Add folder...', command=parent.open_directory)
+        filemenu.add_separator()
+        filemenu.add_command(
+                label='Load ROIs',
+                command=lambda: parent.apply_movzip(rois=True))
+        filemenu.add_command(
+                label='Save ROIs',
+                command=lambda: parent._save_movzip(
+                    only=['rois', 'selections']))
+        
+        filemenu.add_separator()
+        filemenu.add_command(label='Save ROI view',
+                command=parent.save_roiview)
+        
+        filemenu.add_command(label='Save ROIs only view',
+                command=lambda: parent.save_roiview(only_rois=True))
+        filemenu.add_separator()
+        filemenu.add_command(label='Quit', command=parent.parent.destroy) 
+        
+        self.menu.add_cascade(label='File', menu=filemenu)
+        
+
+        editmenu = tk.Menu(parent)
+        editmenu.add_command(
+                label='Undo (latest ROI)', command=parent.undo)
+        editmenu.add_separator()
+        editmenu.add_command(
+                label='Global settings', command=parent.open_settings)
+        self.menu.add_cascade(label='Edit', menu=editmenu)
+
+        viewmenu = tk.Menu(self)
+        viewmenu.add_command(
+                label='Show image controls',
+                command=parent.toggle_controls)
+        self.menu.add_cascade(label='View', menu=viewmenu)
+        
+        batchmenu = tk.Menu(self)
+        batchmenu.add_command(
+                label='Batch measure & save all',
+                command=parent.batch_process)
+        batchmenu.add_separator()
+        batchmenu.add_command(
+                label='Reprocess rectangular selection (with current block settings)',
+                command=parent.recalculate_old)
+        batchmenu.add_command(
+                label='Replot heatmap', command=parent.replot_heatmap)
+ 
+        self.menu.add_cascade(label='Batch', menu=batchmenu)
+
+        toolmenu = tk.Menu(self)
+        toolmenu.add_command(
+                label='Heatmap tool', command=lambda: open_httool(parent))
+        self.menu.add_cascade(label='Tools', menu=toolmenu)
+        
+        parent.parent.config(menu=self.menu)
+
+
+
 
 class MovemeterTkGui(tk.Frame):
     '''
@@ -261,58 +336,6 @@ class MovemeterTkGui(tk.Frame):
         self.use_mask_image = False
         self.mask_image = None
        
-
-        # Top menu
-        # --------------------------------
-        self.menu = tk.Menu(self)
-        
-        filemenu = tk.Menu(self)
-        filemenu.add_command(label='Add stack...', command=self.open_stack)
-        filemenu.add_command(label='Add folder...', command=self.open_directory)
-        filemenu.add_separator()
-        filemenu.add_command(label='Load ROIs',
-                command=lambda: self.apply_movzip(rois=True))
-        filemenu.add_command(label='Save ROIs',
-                command=lambda: self._save_movzip(only=['rois', 'selections']))
-        
-        filemenu.add_separator()
-        filemenu.add_command(label='Save ROI view',
-                command=self.save_roiview)
-        
-        filemenu.add_command(label='Save ROIs only view',
-                command=lambda: self.save_roiview(only_rois=True))
-        filemenu.add_separator()
-        filemenu.add_command(label='Quit', command=self.parent.destroy) 
-        
-        self.menu.add_cascade(label='File', menu=filemenu)
-        
-
-        editmenu = tk.Menu(self)
-        editmenu.add_command(label='Undo (latest ROI)', command=self.undo)
-        editmenu.add_separator()
-        editmenu.add_command(label='Global settings', command=self.open_settings)
-        self.menu.add_cascade(label='Edit', menu=editmenu)
-
-        viewmenu = tk.Menu(self)
-        viewmenu.add_command(label='Show image controls', command=self.toggle_controls)
-        self.menu.add_cascade(label='View', menu=viewmenu)
-        
-        batchmenu = tk.Menu(self)
-        batchmenu.add_command(label='Batch measure & save all', command=self.batch_process)
-        batchmenu.add_separator()
-        batchmenu.add_command(label='Reprocess rectangular selection (with current block settings)',
-                command=self.recalculate_old)
-        batchmenu.add_command(label='Replot heatmap', command=self.replot_heatmap)
- 
-        self.menu.add_cascade(label='Batch', menu=batchmenu)
-
-        toolmenu = tk.Menu(self)
-        toolmenu.add_command(label='Heatmap tool', command=lambda: open_httool(self))
-        self.menu.add_cascade(label='Tools', menu=toolmenu)
-        
-
-        self.parent.config(menu=self.menu)
-
 
         # Input folders
 
@@ -1720,6 +1743,9 @@ def main():
     gui.grid(row=1, column=1, sticky='NSWE')
     root.columnconfigure(1, weight=1)
     root.rowconfigure(1, weight=1)
+
+    menu = MovemeterMenubar(gui)
+
     root.mainloop()
 
 
