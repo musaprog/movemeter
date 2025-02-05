@@ -59,6 +59,21 @@ def find_location(orig_im, ROI, orig_im_ref, max_movement=None, upscale=1):
     cw = int(round(cw))
     ch = int(round(ch))
 
+    # Check; If max_movement+ROI similar size to the image
+    # dimensions disable max_movement
+   
+    if isinstance(max_movement, (int, float)):
+        height = len(orig_im_ref)
+        width = len(orig_im_ref[0])
+ 
+        if max_movement+cy >= height:
+            print(f'  Omit max_movement {max_movement} (height {height})')
+            max_movement = None
+        elif max_movement+cw >= width:
+            print(f'  Omit max_movement {max_movement} (width {width})')
+            max_movement = None
+        
+
     if max_movement:
         max_movement = int(max_movement)
 
