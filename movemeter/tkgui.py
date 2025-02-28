@@ -380,7 +380,7 @@ class MovemeterTkGui(tk.Frame):
                 orient=tk.HORIZONTAL)
         self.patch_lw_slider.set(1)
         self.patch_lw_slider.grid(row=2, column=2, sticky='NSWE')
-        
+
         tk.Label(self.styleview, text='Fill strength').grid(row=3, column=1)
         self.patch_fill_slider = tk.Scale(self.styleview, from_=0, to=100,
                 orient=tk.HORIZONTAL)
@@ -392,7 +392,15 @@ class MovemeterTkGui(tk.Frame):
         self.roiview = self.tabs.tabs[1]
         self.roiview.columnconfigure(2, weight=1)
 
-        self.roi_drawtypes = {'box': 'box',
+        self.roitypes = [
+                'free', 'box', 'ellipse', 'line', 'polygon',
+                'arc_from_points', 'concentric_arcs_from_points',
+                'radial_lines_from_points'
+                ]
+
+        self.roi_drawtypes = {
+                'free': 'box',
+                'box': 'box',
                 'ellipse': 'ellipse',
                 'line': 'line',
                 'polygon': 'polygon',
@@ -404,11 +412,9 @@ class MovemeterTkGui(tk.Frame):
         self.selmode_frame = tk.Frame(self.roiview)
         self.selmode_frame.grid(row=1, column=2)
         
-        self.roitype_selection = DropdownList(self.selmode_frame,
-                ['box', 'ellipse', 'line', 'polygon', 'arc_from_points',
-                    'concentric_arcs_from_points',
-                    'radial_lines_from_points'], 
-                ['Box', 'Ellipse', 'Line', 'Polygon', 'Arc from points',
+        self.roitype_selection = DropdownList(
+                self.selmode_frame, self.roitypes,
+                ['Free', 'Box', 'Ellipse', 'Line', 'Polygon', 'Arc from points',
                     'Concentric Arcs (++RG)',
                     'Radial lines (++RG)'],
                 single_select=True, callback=self.update_roitype_selection)
@@ -421,13 +427,15 @@ class MovemeterTkGui(tk.Frame):
         self.drawmode_selection.grid(row=1, column=1)
 
 
-        tk.Label(self.roiview, text='Block size').grid(row=3, column=1)
+        self.blocksize_label = tk.Label(self.roiview, text='Block size')
+        self.blocksize_label.grid(row=3, column=1)
         self.blocksize_slider = tk.Scale(self.roiview, from_=16, to=128,
                 orient=tk.HORIZONTAL)
         self.blocksize_slider.set(32)
         self.blocksize_slider.grid(row=3, column=2, sticky='NSWE')
 
-        tk.Label(self.roiview, text='Block distance').grid(row=4, column=1)
+        self.overlap_label = tk.Label(self.roiview, text='Block distance')
+        self.overlap_label.grid(row=4, column=1)
         self.overlap_slider = tk.Scale(self.roiview, from_=1, to=128,
                 orient=tk.HORIZONTAL, resolution=1)
         self.overlap_slider.set(32)
@@ -447,7 +455,6 @@ class MovemeterTkGui(tk.Frame):
         self.nroi_slider = tk.Scale(self.roiview, from_=1, to=128,
                 orient=tk.HORIZONTAL, resolution=1)
         self.nroi_slider.grid(row=6, column=2, sticky='NSWE')
-        self.nroi_slider.grid_remove()
 
         self.radial_len_label = tk.Label(self.roiview, text='Radial line length')
         self.radial_len_label.grid(row=7, column=1)
@@ -455,9 +462,9 @@ class MovemeterTkGui(tk.Frame):
         self.radial_len_slider = tk.Scale(self.roiview, from_=1, to=1024,
                 orient=tk.HORIZONTAL, resolution=1)
         self.radial_len_slider.grid(row=7, column=2, sticky='NSWE')
-        self.radial_len_slider.grid_remove()
 
-
+        # Set what sliders are needed for the default roi selection type
+        self.update_roitype_selection(change_image=False)
 
         self.roi_buttons = ButtonsFrame(self.roiview, ['Update', 'Max grid', 'Clear', 'Undo', 'New group'],
                 [self.update_grid, self.fill_grid, self.clear_selections, self.undo, self.new_group])
@@ -1018,29 +1025,63 @@ class MovemeterTkGui(tk.Frame):
         self.set_status('Undone windows {} in ROI group {}'.format(N_rois_remove, i_roigroup))
 
 
-    def update_roitype_selection(self):
+    def update_roitype_selection(self, change_image=True):
         '''
         When user selects a certain ROI type (box, circle, ...) to draw
         some of the sliders can be hidden.
+
+        Arguments
+        ---------
+        change_image : bool
+            If true, calls the change_image method at the end
         '''
         selected = self.roitype_selection.ticked[0] 
 
-        if selected in ['concentric_arcs_from_points', 'radial_lines_from_points']:
-            self.nroi_label.grid()
-            self.nroi_slider.grid()
+        elements = [
+                [self.blocksize_slider, self.blocksize_label],
+                [self.overlap_slider, self.overlap_label],
+                [self.distance_slider, self.distance_label],
+                [self.nroi_slider, self.nroi_label],
+                [self.radial_len_slider, self.radial_len_label],
+                ] 
+        
+        # Multiboxes all but the free selection
+        multiboxes = self.roitypes.copy()
+        multiboxes.remove('free')
+    
+        needs = [
+                multiboxes,
+                multiboxes,
+                multiboxes,
+                ['concentric_arcs_from_points', 'radial_lines_from_points'],
+                ['radial_lines_from_points'],
+                ]
+        
+        for needing, (slider, label) in zip(needs, elements):
+            if selected in needing:
+                slider.grid()
+                label.grid()
+            else:
+                slider.grid_remove()
+                label.grid_remove()
+        
+        #if selected in ['concentric_arcs_from_points', 'radial_lines_from_points']:
+        #    self.nroi_label.grid()
+        #    self.nroi_slider.grid()
+        #
+        #    if selected == 'radial_lines_from_points':
+        #        self.radial_len_label.grid()
+        #       self.radial_len_slider.grid()
 
-            if selected == 'radial_lines_from_points':
-                self.radial_len_label.grid()
-                self.radial_len_slider.grid()
+        #else:
+        #    self.nroi_label.grid_remove()
+        #    self.nroi_slider.grid_remove()
 
-        else:
-            self.nroi_label.grid_remove()
-            self.nroi_slider.grid_remove()
+        #    self.radial_len_label.grid_remove()
+        #    self.radial_len_slider.grid_remove()
 
-            self.radial_len_label.grid_remove()
-            self.radial_len_slider.grid_remove()
-
-        self.change_image()
+        if change_image:
+            self.change_image()
 
 
     def clear_selections(self):
@@ -1171,6 +1212,9 @@ class MovemeterTkGui(tk.Frame):
                 rois = grid_along_line((x1, y1), (x2, y2), distance, block_size, step=rel_step)
             elif roitype == 'ellipse':
                 rois = grid_along_ellipse((x1,y1,w,h), block_size, step=rel_step)
+            elif roitype == 'free':
+                # Single user-made box similar to roimarker
+                rois = [[int(x1), int(y1), int(w), int(h)]]
             else:
                 rois = gen_grid((x1,y1,w,h), block_size, step=rel_step)
             
