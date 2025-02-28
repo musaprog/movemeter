@@ -236,13 +236,13 @@ class MovemeterMenubar:
                 label='Global settings', command=parent.open_settings)
         self.menu.add_cascade(label='Edit', menu=editmenu)
 
-        viewmenu = tk.Menu(self)
+        viewmenu = tk.Menu(parent)
         viewmenu.add_command(
                 label='Show image controls',
                 command=parent.toggle_controls)
         self.menu.add_cascade(label='View', menu=viewmenu)
         
-        batchmenu = tk.Menu(self)
+        batchmenu = tk.Menu(parent)
         batchmenu.add_command(
                 label='Batch measure & save all',
                 command=parent.batch_process)
@@ -255,7 +255,7 @@ class MovemeterMenubar:
  
         self.menu.add_cascade(label='Batch', menu=batchmenu)
 
-        toolmenu = tk.Menu(self)
+        toolmenu = tk.Menu(parent)
         toolmenu.add_command(
                 label='Heatmap tool', command=lambda: open_httool(parent))
         self.menu.add_cascade(label='Tools', menu=toolmenu)
