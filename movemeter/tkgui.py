@@ -1318,7 +1318,7 @@ class MovemeterTkGui(tk.Frame):
             total_frames += frames
 
             if total_frames >= i_image:
-                return i_fn, frames - (total_frames - i_image) - 1
+                return i_fn, frames - (total_frames - i_image)
     
 
     def change_image(self, slider_value=None):
@@ -1328,6 +1328,7 @@ class MovemeterTkGui(tk.Frame):
         slider_value = int(self.image_slider.get())
 
         image_i = int(slider_value) -1
+
 
         if not 0 <= image_i < len(self.images):
             return None
