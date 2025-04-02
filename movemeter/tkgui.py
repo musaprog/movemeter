@@ -1,5 +1,4 @@
-'''
-A tkinter/tk GUI for Movemeter the motion analysis tool.
+'''A tkinter/tk GUI for Movemeter motion analysis.
 
 Features in short
 -----------------
@@ -204,9 +203,9 @@ class MovemeterMenubar:
         
         filemenu = tk.Menu(parent)
         filemenu.add_command(
-                label='Add stack...', command=parent.open_stack)
+                label='Add stack...', command=parent.folview.open_stack)
         filemenu.add_command(
-                label='Add folder...', command=parent.open_directory)
+                label='Add folder...', command=parent.folview.open_directory)
         filemenu.add_separator()
         filemenu.add_command(
                 label='Load ROIs',
@@ -230,7 +229,7 @@ class MovemeterMenubar:
 
         editmenu = tk.Menu(parent)
         editmenu.add_command(
-                label='Undo (latest ROI)', command=parent.undo)
+                label='Undo (latest ROI)', command=parent.roidrawer.undo)
         editmenu.add_separator()
         editmenu.add_command(
                 label='Global settings', command=parent.open_settings)
@@ -239,7 +238,7 @@ class MovemeterMenubar:
         viewmenu = tk.Menu(parent)
         viewmenu.add_command(
                 label='Show image controls',
-                command=parent.toggle_controls)
+                command=parent.imview.toggle_controls)
         self.menu.add_cascade(label='View', menu=viewmenu)
         
         batchmenu = tk.Menu(parent)
@@ -264,16 +263,11 @@ class MovemeterMenubar:
 
 
 
-
-class MovemeterTkGui(tk.Frame):
-    '''
-    Main widget for the Movemeter tkinter GUI.
+class DataInputWidget(tk.Frame):
+    '''Imports user data and sets the active stack
     
-    ATTRIBUTES
-    -----------
-    self.parent : object
-        tkinter parent widget
-
+    Attributes
+    ----------
     folders : list
         List of opened directories and image stack files
     folders_listbox : object
@@ -285,333 +279,59 @@ class MovemeterTkGui(tk.Frame):
     images : list of Nones or list of ndarray
         Initially list of Nones, as long as many images there are.
         Incrimentally, becomes a list of images (numpy array).
-    exclude_images : list
-        List of image filenames or indices to exclude from the analysis.
     fs : int or float
         Sampling rate of the images, in Hz (1/s). Global for all data.
-    
     filename_extensions : tuple of strings
         Accepted filename extensions for images (or videos).
     self.N_frames : dict
         For video files of image stacks, contains the amount of frames
         per each file and the filenames are the keys.
-    
-    selections : list
-    
     '''
-
-    def __init__(self, tk_parent):
-        tk.Frame.__init__(self, tk_parent)
-        self.parent = tk_parent
+        
+    def __init__(self, parent, movemeter, callback, statusbar=None):
+        tk.Frame.__init__(self, parent)
+        self.parent = parent
+        self.statusbar = statusbar
+        self.movemeter = movemeter
+        self.callback = callback
 
         # Data and images
         self.folders = []
         self.current_folder = None
         self.image_fns = []
         self.images = None
-        self.exclude_images = []
         self.fs = 100
-        
+       
+        self.exclude_images = []
+
         self.filename_extensions = ('.tiff', '.tif', '.mp4')
         self.N_frames = {}
-       
-        # Selections and ROIs
-        self.selections = []
-        self.roi_groups = []
-        self.current_roi_group = 0
-        self.roi_patches = []
-        
-        self.colors = matplotlib.cm.ScalarMappable(cmap=matplotlib.cm.tab10)
-        self.colors.set_clim(0,10)
-
-        # Motion analysis
-        self.movemeter = Movemeter()
-        self.results = []
-        self.heatmap_images = []
-        self.batch_name = 'batch_name'
-
-        self.show_controls = False
 
         # Other
         self.use_mask_image = False
         self.mask_image = None
-       
+ 
 
         # Input folders
 
-        self.folview = tk.LabelFrame(self, text='Input folders')
-        self.folview.rowconfigure(2, weight=1)
-        self.folview.columnconfigure(1, weight=1)
-        self.folview.grid(row=0, column=1, sticky='NSWE')
-
-        self.folders_listbox = Listbox(self.folview, ['No folders selected'], self.folder_selected)
+        self.folders_listbox = Listbox(self, ['No folders selected'], self.folder_selected)
         self.folders_listbox.listbox.config(height=10)
         self.folders_listbox.grid(row=2, column=1, columnspan=2, sticky='NSWE')
 
-        self.imview_buttons = ButtonsFrame(self.folview,
+        self.folview_buttons = ButtonsFrame(self,
                 ['Add stack...', 'Add folder...', 'Remove', 'FS'],
                 [self.open_stack, self.open_directory, self.remove_directory, self.set_fs])
-        self.imview_buttons.grid(row=0, column=1) 
-        self.fs_button = self.imview_buttons.buttons[3]
+        self.folview_buttons.grid(row=0, column=1) 
+        self.fs_button = self.folview_buttons.buttons[3]
         self.set_fs(fs=self.fs)
 
-        # Operations view
-        # -------------------------
-        self.opview = tk.LabelFrame(self, text='Command center')
-        self.opview.grid(row=0, column=2, sticky='NSWE')
-        
-        self.tabs = Tabs(self.opview,
-                ['Style', 'ROI creation', 'Motion analysis', 'Brightness analysis'],
-                draw_frame = True)
-        self.tabs.grid(row=0, column=1, columnspan=2, sticky='NSWE')
-        self.tabs.set_page(1) 
-       
-        self.styleview = self.tabs.tabs[0]
-        self.styleview.columnconfigure(2, weight=1)
-        
-        self.colormap_label = tk.Label(self.styleview, text='Colormap')
-        self.colormap_label.grid(row=1, column=1)
-        self.colormap_selection = tk.Button(self.styleview, text=self.colors.get_cmap().name,
-                command=self.open_colormap_selection)
-        self.colormap_selection.grid(row=1, column=2)
-        
-        tk.Label(self.styleview, text='Line width').grid(row=2, column=1)
-        self.patch_lw_slider = tk.Scale(self.styleview, from_=0, to_=10,
-                orient=tk.HORIZONTAL)
-        self.patch_lw_slider.set(1)
-        self.patch_lw_slider.grid(row=2, column=2, sticky='NSWE')
+   
+        self.columnconfigure(1, weight=1)
+        self.rowconfigure(2,weight=1)
 
-        tk.Label(self.styleview, text='Fill strength').grid(row=3, column=1)
-        self.patch_fill_slider = tk.Scale(self.styleview, from_=0, to=100,
-                orient=tk.HORIZONTAL)
-        self.patch_fill_slider.grid(row=3, column=2, sticky='NSWE')
-        self.patch_fill_slider.set(40)
-
-
-
-        self.roiview = self.tabs.tabs[1]
-        self.roiview.columnconfigure(2, weight=1)
-
-        self.roitypes = [
-                'free', 'box', 'ellipse', 'line', 'polygon',
-                'arc_from_points', 'concentric_arcs_from_points',
-                'radial_lines_from_points'
-                ]
-
-        self.roi_drawtypes = {
-                'free': 'box',
-                'box': 'box',
-                'ellipse': 'ellipse',
-                'line': 'line',
-                'polygon': 'polygon',
-                'arc_from_points': 'polygon',
-                'concentric_arcs_from_points': 'polygon',
-                'radial_lines_from_points': 'polygon'}
-
-        tk.Label(self.roiview, text='Selection mode').grid(row=1, column=1)
-        self.selmode_frame = tk.Frame(self.roiview)
-        self.selmode_frame.grid(row=1, column=2)
-        
-        self.roitype_selection = DropdownList(
-                self.selmode_frame, self.roitypes,
-                ['Free', 'Box', 'Ellipse', 'Line', 'Polygon', 'Arc from points',
-                    'Concentric Arcs (++RG)',
-                    'Radial lines (++RG)'],
-                single_select=True, callback=self.update_roitype_selection)
-        self.roitype_selection.grid(row=1, column=2)
-
-        self.drawmode_selection = TickboxFrame(self.selmode_frame,
-                ['add', 'remove'], ['Add', 'Remove'],
-                single_select=True
-                )
-        self.drawmode_selection.grid(row=1, column=1)
-
-
-        self.blocksize_label = tk.Label(self.roiview, text='Block size')
-        self.blocksize_label.grid(row=3, column=1)
-        self.blocksize_slider = tk.Scale(self.roiview, from_=16, to=128,
-                orient=tk.HORIZONTAL)
-        self.blocksize_slider.set(32)
-        self.blocksize_slider.grid(row=3, column=2, sticky='NSWE')
-
-        self.overlap_label = tk.Label(self.roiview, text='Block distance')
-        self.overlap_label.grid(row=4, column=1)
-        self.overlap_slider = tk.Scale(self.roiview, from_=1, to=128,
-                orient=tk.HORIZONTAL, resolution=1)
-        self.overlap_slider.set(32)
-        self.overlap_slider.grid(row=4, column=2, sticky='NSWE')
-        
-        self.distance_label = tk.Label(self.roiview, text='Line-block distance')
-        self.distance_label.grid(row=5, column=1)
-        self.distance_slider = tk.Scale(self.roiview, from_=1, to=128,
-                orient=tk.HORIZONTAL, resolution=1)
-        self.distance_slider.set(32)
-        self.distance_slider.grid(row=5, column=2, sticky='NSWE')
-
-        
-        self.nroi_label = tk.Label(self.roiview, text='Count')
-        self.nroi_label.grid(row=6, column=1)
-        self.nroi_label.grid_remove()
-        self.nroi_slider = tk.Scale(self.roiview, from_=1, to=128,
-                orient=tk.HORIZONTAL, resolution=1)
-        self.nroi_slider.grid(row=6, column=2, sticky='NSWE')
-
-        self.radial_len_label = tk.Label(self.roiview, text='Radial line length')
-        self.radial_len_label.grid(row=7, column=1)
-        self.radial_len_label.grid_remove()
-        self.radial_len_slider = tk.Scale(self.roiview, from_=1, to=1024,
-                orient=tk.HORIZONTAL, resolution=1)
-        self.radial_len_slider.grid(row=7, column=2, sticky='NSWE')
-
-        # Set what sliders are needed for the default roi selection type
-        self.update_roitype_selection(change_image=False)
-
-        self.roi_buttons = ButtonsFrame(self.roiview, ['Update', 'Max grid', 'Clear', 'Undo', 'New group'],
-                [self.update_grid, self.fill_grid, self.clear_selections, self.undo, self.new_group])
-
-        self.roi_buttons.grid(row=8, column=1, columnspan=2)
-        
-        self.parview = self.tabs.tabs[2]
-        self.parview.columnconfigure(1, weight=1)
-        self.movemeter_settings = MovemeterSettings(self.parview)
-        self.movemeter_settings.grid(column=1,sticky='NSWE')
-
- 
-
-        # Brightness
-        self.brightness_view = self.tabs.tabs[3]
-        self.brightness_view.columnconfigure(1, weight=1)
-        
-        self.brightness_tickboxes = {}
-        for name, options in self.movemeter.measure_brightness_opt.items():
-            frame = TickboxFrame(
-                    self.brightness_view, options, single_select=True)
-            frame.grid()
-            self.brightness_tickboxes[name] = frame
-
-
-
-        # ACTIONS FRAME
-        self.actframe = tk.LabelFrame(self.opview, text='Measure')
-        self.actframe.grid(row=1, column=1, columnspan=2)
-        
-        self.calculate_button = tk.Button(self.actframe, text='Movement',
-                command=self.measure_movement)
-        self.calculate_button.grid(row=1, column=1)
-        
-        self.brightness_do_button = tk.Button(self.actframe, text='Brightness',
-                command=self.measure_brightness)
-        self.brightness_do_button.grid(row=1, column=2)
-
-        self.stop_button = tk.Button(self.actframe, text='Stop',
-                command=self.stop)
-        self.stop_button.grid(row=1, column=3)
-
-
-
-        self.export_button = tk.Button(self.opview, text='Export results',
-                command=self.export_results)
-        self.export_button.grid(row=4, column=1)
-        
-        self.export_name = tk.Entry(self.opview, width=50)
-        self.export_name.insert(0, "enter export name")
-        self.export_name.grid(row=4, column=2)
-        
-
-        # Images view: Image looking and ROI selection
-        # -------------------------------------------------
-        self.imview = tk.LabelFrame(self, text='Images and ROI')
-        self.imview.grid(row=1, column=1, sticky='NSWE')
-        
-        self.imview.columnconfigure(1, weight=1)
-        self.imview.rowconfigure(3, weight=1)
-
-        self.imview_buttons = ButtonsFrame(self.imview,
-                ['Exclude image', 'Exclude index'],
-                [self.toggle_exclude, lambda: self.toggle_exclude(by_index=True)])
-        
-        self.imview_buttons.grid(row=1, column=1)
-
-
-        self.image_slider = tk.Scale(self.imview, from_=0, to=0,
-                orient=tk.HORIZONTAL, command=self.change_image)
-        
-        self.image_slider.grid(row=2, column=1, sticky='NSWE')
-
-        self.images_plotter = CanvasPlotter(self.imview)
-        self.images_plotter.grid(row=3, column=1, sticky='NSWE') 
-        
-        ax = self.images_plotter.ax
-        self.excludetext = ax.text(0.5, 0.5, '', transform=ax.transAxes,
-                fontsize=24, ha='center', va='center', color='red')
-
-
-
-        # Results view: Analysed traces
-        # ------------------------------------
-        
-        self.tabs = Tabs(self, ['Displacement', 'Heatmap'])
-        self.tabs.grid(row=1, column=2, sticky='NSWE')
-        self.resview = self.tabs.pages[0]
-        self.heatview = self.tabs.pages[1]
-
-        self.resview.rowconfigure(2, weight=1)
-        self.resview.columnconfigure(1, weight=1)
-        self.heatview.columnconfigure(2, weight=1)
-        self.heatview.rowconfigure(2, weight=1)
-
-        self.results_plotter = CanvasPlotter(self.resview)
-        self.results_plotter.grid(row=2, column=1, sticky='NSWE')
-       
-        # Results show options
-        self.results_plotter_opts = TickboxFrame(
-                self.resview,
-                ['show_individual', 'show_mean', 'show_toolbar'],
-                defaults=[True,True,False],
-                callback=self.plot_results)
-        self.results_plotter_opts.grid(row=1, column=1, sticky='NSWE')
-
-        self.heatmap_plotter = CanvasPlotter(self.heatview)
-        self.heatmap_plotter.grid(row=2, column=2, sticky='NSWE') 
-        
-        self.heatmap_slider = tk.Scale(self.heatview, from_=0, to=0,
-            orient=tk.HORIZONTAL, command=self.change_heatmap)
-        self.heatmap_slider.grid(row=0, column=1, sticky='NSWE')
-        
-        self.heatmapcap_slider = tk.Scale(self.heatview, from_=0.1, to=100,
-            orient=tk.HORIZONTAL, resolution=0.1, command=self.change_heatmap)
-        self.heatmapcap_slider.set(20)
-        self.heatmapcap_slider.grid(row=0, column=2, sticky='NSWE') 
-        
-        self.heatmap_firstcap_slider = tk.Scale(self.heatview, from_=0.1, to=100,
-            orient=tk.HORIZONTAL, resolution=0.1, command=self.change_heatmap)
-        self.heatmap_firstcap_slider.set(20)
-        self.heatmap_firstcap_slider.grid(row=1, column=2, sticky='NSWE') 
-       
-        
-        self.status = tk.Label(self, text='Nothing to do')
-        self.status.grid(row=2, column=1, columnspan=2)
-
-        self.columnconfigure(1, weight=1)    
-        self.columnconfigure(2, weight=1)
-        self.rowconfigure(1, weight=1)
-    
-
-    def _imread(self, fn):
-        '''
-        Use Movemeter to open image/video.
-        '''
-        images = self.movemeter._imread(fn)
-        return images
-
-
-    def stop():
-        '''
-        Stop any ongoing motion analysis.
-        '''
-        self.exit=True
-        if self.movemeter:
-            self.movemeter.stop()
+    def set_status(self, *args, **kwargs):
+        if self.statusbar:
+            self.statusbar.set_status(*args, **kwargs)
 
 
     def set_fs(self, fs=None):
@@ -627,13 +347,6 @@ class MovemeterTkGui(tk.Frame):
             self.fs_button.configure(text='fs = {} Hz'.format(self.fs))
 
 
-    def open_settings(self):
-        '''
-        Placeholder for the settings dialog.
-        '''
-        raise NotImplementedError
-
-
     def _get_previous_directory(self):
         try: 
             with open(os.path.join(MOVEDIR, 'last_directory.txt'), 'r') as fp:
@@ -644,6 +357,7 @@ class MovemeterTkGui(tk.Frame):
         if os.path.exists(previous_directory):
             return previous_directory
         return None
+
 
     def _set_previous_directory(self, directory):
         if not os.path.isdir(MOVEDIR):
@@ -731,7 +445,25 @@ class MovemeterTkGui(tk.Frame):
         self.folders = []
         self.folders_listbox.set_selections([])
 
-        
+    
+    def _imread(self, fn):
+        '''
+        Use Movemeter to open image/video.
+        '''
+        images = self.movemeter._imread(fn)
+        return images
+
+    @property
+    def image_shape(self):
+        #slider_value = int(self.image_slider.get())
+        #image_i = int(slider_value) -1
+        #if self.images[image_i] is None:
+        #    self.images[image_i] = self._imread(self.image_fns[image_i])[0]
+        #return self.images[image_i].shape
+        for image in self.images:
+            if image is not None:
+                return self.images[image_i].shape
+        return self._imread(self.image_fns[0])[0].shape
 
     def folder_selected(self, folder, usermade=True):
         '''
@@ -770,209 +502,92 @@ class MovemeterTkGui(tk.Frame):
 
         self.images = [None for i in range(N_images)]
         self.mask_image = None
-   
-
-        self.change_image(slider_value=1)
-        self.image_slider.config(from_=1, to=N_images)
-       
-        self.export_name.delete(0, tk.END)
-        self.export_name.insert(0, os.path.basename(folder.rstrip('/')))
-
-
-    def toggle_exclude(self, by_index=False):
-        '''
-        Look at the currently shown image and toggle its excludance.
         
+        if callable(self.callback):
+            self.callback()
+
+    
+    def _get_fn_and_frame(self, i_image):
+        '''
+        Workaround needed for video/stack files, getting the correct
+        filename and frame for the ith image.
+
         Arguments
         ---------
-        by_index : bool
-            If true, toggle exclude for all images with this index.
-            If false, exclude the filename only.
+        i_image : int
+            Index of the image.
+
+        Returns
+        -------
+        i_fn : int
+            Index of the file name in self.datainput.image_fns
+        i_frame : int
+            Index of the frame in the video/stack file.
         '''
+        total_frames = 0
+        for i_fn, fn in enumerate(self.image_fns):
+            frames = self.N_frames.get(fn, 1)
+            total_frames += frames
 
-        indx = int(self.image_slider.get()) - 1
-        if by_index:
-            fn = indx
-        else:
-            fn = self.image_fns[indx]
-
-        if fn not in self.exclude_images:
-            self.exclude_images.append(fn)
-            self.set_status('Removed image {} from the analysis'.format(fn))
-        else:
-            self.exclude_images.remove(fn) 
-            self.set_status('Added image {} back to the analysis'.format(fn))
-        
-        self.mask_image = None
-        self.change_image(slider_value=self.image_slider.get())
-    
-
-    def toggle_controls(self):
-        '''
-        Show/hide image brightness/contrast controls.
-        '''
-        self.show_controls = not(self.show_controls)
-        self.change_image()
-
-
-    def recalculate_old(self, directory=None):
-        '''
-        Load old movzip, look the ROI extremes, and draw a new ROI
-        but using the current block settings (block size and distance).
-
-        Useful for testing how the results change when the selected
-        area remains approximately the same but the block settings change.
-        '''
-
-        if directory == None:
-            directory = filedialog.askdirectory()
-            if not directory:
-                return None
-        
-        if not self._ask_batchname():
-            return None
+            if total_frames >= i_image:
+                return i_fn, frames - (total_frames - i_image)
  
-        self.exit = False
-        for root, dirs, fns in os.walk(directory):
-            
-            if self.exit:
-                break
-
-            movzip = [fn for fn in os.listdir(root) if fn.startswith('movemeter') and fn.endswith('.zip')]
-            
-            if movzip:
-                settings, filenames, selections, rois, movements = self._load_movzip(os.path.join(root, movzip[0]))
-                
-                self.folder_selected(
-                        os.path.dirname(filenames[0]), usermade=False)
-                
-                x1, y1 = np.min(rois, axis=0)[0:2]
-                x2, y2 = np.max(rois, axis=0)[0:2] + rois[0][3]
-                self.set_roi(x1,y1,x2,y2)
-
-                self.measure_movement()
-
-                self.export_results(batch_name=self.batch_name)
-
-        self.set_status('Results recalculated :)')
-
-
-    def replot_heatmap(self, directory=None):
-        '''
-        Like recalculate old, but relies in the old movement analysis results
-        '''
-        if directory == None:
-            directory = filedialog.askdirectory()
-            if not directory:
-                return None
-        
-        if not self._ask_batchname():
-            return None
  
-        self.exit = False
-        for root, dirs, fns in os.walk(directory):
-            
-            if self.exit:
-                break
+    def get_image(self, i_image):
 
-            movzip = [fn for fn in os.listdir(root) if fn.startswith('movemeter') and fn.endswith('.zip')]
-            if movzip:
-                settings, filenames, self.selections, self.roi_groups, self.results = self._load_movzip(os.path.join(root, movzip[0])) 
-                
-                self.folder_selected(
-                        os.path.dirname(filenames[0]), usermade=False)
-                self.set_settings(settings)
-
-                self.plot_results()
-                self.calculate_heatmap()
-                self.change_heatmap(1)
-
-                self.export_results(batch_name=self.batch_name)
-
-        self.set_status('Heatmaps replotted :)')
-
-    
-    def _ask_batchname(self):
-        name = simpledialog.askstring('Batch name', 'Name new folder')
-        if name:
-            self.batch_name = name
-            return True
-        else:
-            return False
-
-
-    def batch_process(self, fill_maxgrid=False):
-        '''
-        fill_maxgrid : bool
-            If True, ignore current ROIs and fill a full frame grid
-            using the current slider options.
-        '''
-
-        if not self._ask_batchname():
+        if not 0 <= i_image < len(self.images):
             return None
         
-        self.exit = False
-        for folder in self.folders:
-            if self.exit:
-                break
-            self.folder_selected(folder, usermade=False)
-            
-            if fill_maxgrid:
-                self.fill_grid()
-            
-            self.measure_movement()
-            self.export_results(batch_name=self.batch_name)
+        if self.use_mask_image:
+            if self.mask_image is None:
+                for i in range(len(self.images)):
 
-
-    def measure_movement(self, target=None):
-        '''
-        Run motion analysis for the images in the currently selected
-        directory, using the drawn ROIs.
-        '''
-
-        if target is None:
-            target = lambda: self.movemeter.measure_movement(0, optimized=True)
-
-        if self.image_fns and self.roi_groups:
-            print('Started roi measurements')
-           
-            self.results = []
-            
-            self.movemeter = Movemeter(print_callback=self.set_status,
-                    **self.movemeter_settings.get_current())
-           
-            for rois in self.roi_groups:
-                # Set movemeted data
-                images = [self._included_image_fns()]
-                self.movemeter.set_data(images, [rois])
+                    self.datainput.images[i] = self.datainput._imread(self.datainput.image_fns[i])
                 
-                self.results.append( target() )
-            
-            self.plot_results()
+                self.mask_image = np.inf * np.ones(self.image_shape)
+                
+                for image in self.images:
+                    self.mask_image = np.min([self.mask_image, image], axis=0)
 
-            self.calculate_heatmap()
-            self.change_heatmap(1)
 
+        i_fn, i_frame = self._get_fn_and_frame(i_image)
+        
+        if self.images[i_image] is None:
+            self.images[i_image] = self._imread(self.image_fns[i_fn])[i_frame] 
+ 
+        if self.use_mask_image:
+            showimage = self.images[i_image] - self.mask_image
         else:
-            self.set_status('No images or ROIs selected')
+            showimage = self.images[i_image]
+
+        return showimage
+
+    def _included_image_fns(self):
+        return [fn for i_fn, fn in enumerate(self.image_fns) if fn not in self.exclude_images and i_fn not in self.exclude_images]
     
-    def measure_brightness(self):
-        kwargs = {}
-        for name, frame in self.brightness_tickboxes.items():
-            kwargs[name] = frame.ticked[0]
+    def _len_included_frames(self):
+        return sum([self.N_frames.get(fn, 1) for fn in self._included_image_fns()])
 
-        bmes = lambda: self.movemeter.measure_brightness(0, **kwargs)
-        self.measure_movement(target=bmes)
 
-    @property
-    def image_shape(self):
-        slider_value = int(self.image_slider.get())
-        image_i = int(slider_value) -1
-        if self.images[image_i] is None:
-            self.images[image_i] = self._imread(self.image_fns[image_i])[0]
-        return self.images[image_i].shape
+class ColorsWidget(tk.Frame):
 
+    def __init__(self, parent):
+        super().__init__(parent)
+        
+        self.colors = matplotlib.cm.ScalarMappable(cmap=matplotlib.cm.tab10)
+        self.colors.set_clim(0,10)
+
+        self.buttons = ButtonsFrame(
+                self,
+                ['Set colormap'],
+                [self.open_colormap_selection],
+                )
+        self.buttons.grid()
     
+    def connect_widgets(self, roidrawer=None):
+        if roidrawer:
+            self.roidrawer = roidrawer
+
     def open_colormap_selection(self):
         '''
         Start ColormapSelector widget in a toplevel window.
@@ -994,141 +609,264 @@ class MovemeterTkGui(tk.Frame):
             self.colors.set_clim(0, 10)
 
         self.colors.set_cmap(colormap)
-        self.colormap_selection.config(text=colormap.name)
-        self.update_grid()
+
+        if self.roidrawer:
+            self.roidrawer.update_grid()
 
 
-    def undo(self):
-        '''
-        Undo a ROI selection made by the user.
-        '''
-        if len(self.selections) == 0:
-            self.set_status('Nothing to undo')
-            return None
+class ImageROIWidget(tk.Frame):
+    '''Displays the image and ROIs
+    '''
 
-        # Index of the roigroup to be undone
-        i_roigroup = self.selections[-1][-1]['i_roigroup']
+    def __init__(self, tk_parent):
+        tk.Frame.__init__(self, tk_parent)
+        self.parent = tk_parent
 
-        # Clear the previous selection data
-        self.selections = self.selections[:-1]
+
+        self.show_controls = False
+
+        self.datainput = None
+        self.roidrawer = None
+        self.statusbar = None
         
-        # Clear the corresponding ROI patches
-        N_rois_remove = len(self.roi_patches[-1])
-        for patch in self.roi_patches[-1]:
-            patch.remove()
-        self.roi_patches = self.roi_patches[:-1]
+
+        # Images view: Image looking and ROI selection
+        # -------------------------------------------------
         
-        # Clear the actual ROIs
-        self.roi_groups[i_roigroup] = self.roi_groups[i_roigroup][:-N_rois_remove]
+        self.imview_buttons = ButtonsFrame(self,
+                ['Exclude image', 'Exclude index'],
+                [self.toggle_exclude,
+                 lambda: self.toggle_exclude(by_index=True),
+                 ])
         
-        self.images_plotter.update()
-        self.set_status('Undone windows {} in ROI group {}'.format(N_rois_remove, i_roigroup))
+        self.imview_buttons.grid(row=1, column=1)
 
 
-    def update_roitype_selection(self, change_image=True):
+        self.image_slider = tk.Scale(self, from_=0, to=0,
+                orient=tk.HORIZONTAL, command=self.change_image)
+        
+        self.image_slider.grid(row=2, column=1, sticky='NSWE')
+
+        self.images_plotter = CanvasPlotter(self)
+        self.images_plotter.grid(row=3, column=1, sticky='NSWE') 
+        
+        ax = self.images_plotter.ax
+        self.excludetext = ax.text(0.5, 0.5, '', transform=ax.transAxes,
+                fontsize=24, ha='center', va='center', color='red')
+
+        tk.Label(self.imview_buttons, text='Line width').grid(row=2, column=0)
+        self.patch_lw_slider = tk.Scale(self.imview_buttons, from_=0, to_=10,
+                orient=tk.HORIZONTAL)
+        self.patch_lw_slider.set(1)
+        self.patch_lw_slider.grid(row=2, column=1, sticky='NSWE')
+
+
+        tk.Label(self.imview_buttons, text='Fill strength').grid(row=2, column=3)
+        self.patch_fill_slider = tk.Scale(self.imview_buttons, from_=0, to=100,
+                orient=tk.HORIZONTAL)
+        self.patch_fill_slider.grid(row=2, column=4, sticky='NSWE')
+        self.patch_fill_slider.set(40)
+
+
+
+
+    
+    def connect_widgets(self, datainput=None, roidrawer=None,
+                        statusbar=None, colors=None):
+        if datainput is not None:
+            self.datainput = datainput
+            self.datainput.callback = self.reset_slider
+        if roidrawer is not None:
+            self.roidrawer = roidrawer
+        if statusbar is not None:
+            self.statusbar = statusbar
+        if colors is not None:
+            self.colors = colors
+   
+    def reset_slider(self):
+        self.change_image(slider_value=1)
+        self.image_slider.config(from_=1, to=len(self.datainput.images))
+       
+        #self.export_name.delete(0, tk.END)
+        #self.export_name.insert(0, os.path.basename(folder.rstrip('/')))
+
+
+    def toggle_exclude(self, by_index=False):
         '''
-        When user selects a certain ROI type (box, circle, ...) to draw
-        some of the sliders can be hidden.
-
+        Look at the currently shown image and toggle its excludance.
+        
         Arguments
         ---------
-        change_image : bool
-            If true, calls the change_image method at the end
+        by_index : bool
+            If true, toggle exclude for all images with this index.
+            If false, exclude the filename only.
         '''
-        selected = self.roitype_selection.ticked[0] 
 
-        elements = [
-                [self.blocksize_slider, self.blocksize_label],
-                [self.overlap_slider, self.overlap_label],
-                [self.distance_slider, self.distance_label],
-                [self.nroi_slider, self.nroi_label],
-                [self.radial_len_slider, self.radial_len_label],
-                ] 
+        indx = int(self.image_slider.get()) - 1
+        if by_index:
+            fn = indx
+        else:
+            fn = self.datainput.image_fns[indx]
+
+        if fn not in self.datainput.exclude_images:
+            self.datainput.exclude_images.append(fn)
+            self.set_status('Removed image {} from the analysis'.format(fn))
+        else:
+            self.datainput.exclude_images.remove(fn) 
+            self.set_status('Added image {} back to the analysis'.format(fn))
         
-        # Multiboxes all but the free selection
-        multiboxes = self.roitypes.copy()
-        multiboxes.remove('free')
+        self.datainput.mask_image = None
+        self.change_image(slider_value=self.image_slider.get())
     
-        needs = [
-                multiboxes,
-                multiboxes,
-                multiboxes,
-                ['concentric_arcs_from_points', 'radial_lines_from_points'],
-                ['radial_lines_from_points'],
-                ]
-        
-        for needing, (slider, label) in zip(needs, elements):
-            if selected in needing:
-                slider.grid()
-                label.grid()
-            else:
-                slider.grid_remove()
-                label.grid_remove()
-        
-        #if selected in ['concentric_arcs_from_points', 'radial_lines_from_points']:
-        #    self.nroi_label.grid()
-        #    self.nroi_slider.grid()
-        #
-        #    if selected == 'radial_lines_from_points':
-        #        self.radial_len_label.grid()
-        #       self.radial_len_slider.grid()
 
-        #else:
-        #    self.nroi_label.grid_remove()
-        #    self.nroi_slider.grid_remove()
-
-        #    self.radial_len_label.grid_remove()
-        #    self.radial_len_slider.grid_remove()
-
-        if change_image:
-            self.change_image()
-
-
-    def clear_selections(self):
+    def toggle_controls(self):
         '''
-        Clear current user selections and ROIs (fresh start)
+        Show/hide image brightness/contrast controls.
         '''
+        self.show_controls = not(self.show_controls)
+        self.change_image()
+
+
+    def change_image(self, slider_value=None):
+        '''
+        Change the currently shown data image.
+        '''
+        slider_value = int(self.image_slider.get())
+
+        image_i = int(slider_value) -1
+
+        image = self.datainput.get_image(image_i)
+        if image is None:
+            return
+
+        i_fn, i_frame = self.datainput._get_fn_and_frame(image_i)
+        
+        if image_i in self.datainput.exclude_images or self.datainput.image_fns[i_fn] in self.datainput.exclude_images:
+            self.excludetext.set_text('EXCLUDED')
+        else: 
+            self.excludetext.set_text('')
+
+        self.images_plotter.imshow(image, roi_callback=self.roidrawer.set_roi,
+                cmap='gray', slider=self.show_controls,
+                roi_drawtype=self.roidrawer.roi_drawtypes[self.roidrawer.roitype_selection.ticked[0]])
+
+
+   
+    def set_status(self, *args, **kwargs):
+        if self.statusbar:
+            self.statusbar.set_status(*args, **kwargs)
+
+
+
+
+class BoxRoiDrawer:
+    '''Draw various box ROIs for movemeter use
+    '''
+
+    def __init__(self, imview, settings_frame):
+
+        self.imview = imview
+        self.settings_frame = settings_frame
+        self.statusbar = None
+
+        self.roiview = self.settings_frame
+
+        # Selections and ROIs
         self.selections = []
-        self.update_grid()
-
         self.roi_groups = []
         self.current_roi_group = 0
-
-
-    def update_grid(self, *args):
-
-        # Updating the image also needed now to update the selector
-        # type drawn while selecting (box or line)
-        self.change_image()
-        
-        # Clear any previous patches
-        for group in self.roi_patches:
-            for patch in group:
-                patch.remove()
         self.roi_patches = []
+       
 
-        self.roi_groups = []
+        self.roitypes = [
+                'free', 'box', 'ellipse', 'line', 'polygon',
+                'arc_from_points', 'concentric_arcs_from_points',
+                'radial_lines_from_points'
+                ]
+
+        self.roi_drawtypes = {
+                'free': 'box',
+                'box': 'box',
+                'ellipse': 'ellipse',
+                'line': 'line',
+                'polygon': 'polygon',
+                'arc_from_points': 'polygon',
+                'concentric_arcs_from_points': 'polygon',
+                'radial_lines_from_points': 'polygon'}
+
+        tk.Label(self.roiview, text='Selection mode').grid(row=1, column=1)
+        self.selmode_frame = tk.Frame(self.roiview)
+        self.selmode_frame.grid(row=1, column=2)
         
-        if self.selections:
-            for selection in self.selections:
-                self.set_roi(*selection, user_made=False)
-        else:
-            self.images_plotter.update()
+        self.roitype_selection = DropdownList(
+                self.selmode_frame, self.roitypes,
+                ['Free', 'Box', 'Ellipse', 'Line', 'Polygon', 'Arc from points',
+                    'Concentric Arcs (++RG)',
+                    'Radial lines (++RG)'],
+                single_select=True, callback=self.update_roitype_selection)
+        self.roitype_selection.grid(row=1, column=2)
+
+        self.drawmode_selection = TickboxFrame(self.selmode_frame,
+                ['add', 'remove'], ['Add', 'Remove'],
+                single_select=True
+                )
+        self.drawmode_selection.grid(row=1, column=1)
 
 
-    def fill_grid(self):
-        '''
-        Create a selection spanning the whole image and distribute
-        cross-correlation windows everywhere.
-        '''
-        self.set_roi(0,0,*reversed(self.image_shape))
+        self.blocksize_label = tk.Label(self.roiview, text='Block size')
+        self.blocksize_label.grid(row=3, column=1)
+        self.blocksize_slider = tk.Scale(self.roiview, from_=16, to=128,
+                orient=tk.HORIZONTAL)
+        self.blocksize_slider.set(32)
+        self.blocksize_slider.grid(row=3, column=2, sticky='NSWE')
 
-    def new_group(self):
-        '''
-        Advance to the next ROI group.
-        '''
-        self.current_roi_group += 1
+        self.overlap_label = tk.Label(self.roiview, text='Block distance')
+        self.overlap_label.grid(row=4, column=1)
+        self.overlap_slider = tk.Scale(self.roiview, from_=1, to=128,
+                orient=tk.HORIZONTAL, resolution=1)
+        self.overlap_slider.set(32)
+        self.overlap_slider.grid(row=4, column=2, sticky='NSWE')
+        
+        self.distance_label = tk.Label(self.roiview, text='Line-block distance')
+        self.distance_label.grid(row=5, column=1)
+        self.distance_slider = tk.Scale(self.roiview, from_=1, to=128,
+                orient=tk.HORIZONTAL, resolution=1)
+        self.distance_slider.set(32)
+        self.distance_slider.grid(row=5, column=2, sticky='NSWE')
 
+        
+        self.nroi_label = tk.Label(self.roiview, text='Count')
+        self.nroi_label.grid(row=6, column=1)
+        self.nroi_label.grid_remove()
+        self.nroi_slider = tk.Scale(self.roiview, from_=1, to=128,
+                orient=tk.HORIZONTAL, resolution=1)
+        self.nroi_slider.grid(row=6, column=2, sticky='NSWE')
+
+        self.radial_len_label = tk.Label(self.roiview, text='Radial line length')
+        self.radial_len_label.grid(row=7, column=1)
+        self.radial_len_label.grid_remove()
+        self.radial_len_slider = tk.Scale(self.roiview, from_=1, to=1024,
+                orient=tk.HORIZONTAL, resolution=1)
+        self.radial_len_slider.grid(row=7, column=2, sticky='NSWE')
+
+        # Set what sliders are needed for the default roi selection type
+        self.update_roitype_selection(change_image=False)
+
+        self.roi_buttons = ButtonsFrame(self.roiview, ['Update', 'Max grid', 'Clear', 'Undo', 'New group'],
+                [self.update_grid, self.fill_grid, self.clear_selections, self.undo, self.new_group])
+
+        self.roi_buttons.grid(row=8, column=1, columnspan=2)
+
+        self.statusbar = None
+        self.colors = None
+
+    def connect_widgets(self, statusbar=None, colors=None, imageview=None):
+        if statusbar is not None:
+            self.statusbar = statusbar
+        if colors is not None:
+            self.colors = colors
+        if imageview is not None:
+            self.imageview = imageview
 
     def set_roi(self, x1=None,y1=None,x2=None,y2=None, params=None, user_made=True,
             recursion_data=None):
@@ -1231,13 +969,13 @@ class MovemeterTkGui(tk.Frame):
             else:
                 self.set_status('Too many ROIs, plotting only 3 000 first...')
             
-            fig, ax = self.images_plotter.get_figax()
+            fig, ax = self.imview.images_plotter.get_figax()
             
-            color = self.colors.to_rgba(i_roigroup%self.colors.get_clim()[1])
+            color = self.colors.colors.to_rgba(i_roigroup%self.colors.colors.get_clim()[1])
             
             patches = [] 
-            lw = self.patch_lw_slider.get()
-            fill = self.patch_fill_slider.get()/100
+            lw = self.imview.patch_lw_slider.get()
+            fill = self.imview.patch_fill_slider.get()/100
             fcolor = (color[0], color[1], color[2], color[3]*fill)
             for roi in rois[:3000]:
 
@@ -1291,132 +1029,322 @@ class MovemeterTkGui(tk.Frame):
 
         else:
             raise ValueError('unkown mode {}'.format(mode))
-        self.images_plotter.update()
+        self.imview.images_plotter.update()
         self.set_status('ROIs plotted :)')
+    
 
-
-    def _get_fn_and_frame(self, i_image):
+    def update_roitype_selection(self, change_image=True):
         '''
-        Workaround needed for video/stack files, getting the correct
-        filename and frame for the ith image.
+        When user selects a certain ROI type (box, circle, ...) to draw
+        some of the sliders can be hidden.
 
         Arguments
         ---------
-        i_image : int
-            Index of the image.
-
-        Returns
-        -------
-        i_fn : int
-            Index of the file name in self.image_fns
-        i_frame : int
-            Index of the frame in the video/stack file.
+        change_image : bool
+            If true, calls the change_image method at the end
         '''
-        total_frames = 0
-        for i_fn, fn in enumerate(self.image_fns):
-            frames = self.N_frames.get(fn, 1)
-            total_frames += frames
+        selected = self.roitype_selection.ticked[0] 
 
-            if total_frames >= i_image:
-                return i_fn, frames - (total_frames - i_image)
+        elements = [
+                [self.blocksize_slider, self.blocksize_label],
+                [self.overlap_slider, self.overlap_label],
+                [self.distance_slider, self.distance_label],
+                [self.nroi_slider, self.nroi_label],
+                [self.radial_len_slider, self.radial_len_label],
+                ] 
+        
+        # Multiboxes all but the free selection
+        multiboxes = self.roitypes.copy()
+        multiboxes.remove('free')
     
-
-    def change_image(self, slider_value=None):
-        '''
-        Change the currently shown data image.
-        '''
-        slider_value = int(self.image_slider.get())
-
-        image_i = int(slider_value) -1
-
-
-        if not 0 <= image_i < len(self.images):
-            return None
+        needs = [
+                multiboxes,
+                multiboxes,
+                multiboxes,
+                ['concentric_arcs_from_points', 'radial_lines_from_points'],
+                ['radial_lines_from_points'],
+                ]
         
-        if self.use_mask_image:
-            if self.mask_image is None:
-                for i in range(len(self.images)):
-
-                    self.images[i] = self._imread(self.image_fns[i])
-                
-                self.mask_image = np.inf * np.ones(self.image_shape)
-                
-                for image in self.images:
-                    self.mask_image = np.min([self.mask_image, image], axis=0)
-
-
-        i_fn, i_frame = self._get_fn_and_frame(image_i)
+        for needing, (slider, label) in zip(needs, elements):
+            if selected in needing:
+                slider.grid()
+                label.grid()
+            else:
+                slider.grid_remove()
+                label.grid_remove()
         
-        if self.images[image_i] is None:
-            self.images[image_i] = self._imread(self.image_fns[i_fn])[i_frame] 
+        if change_image:
+            self.change_image()
+
+    def update_grid(self, *args):
+
+        # Updating the image also needed now to update the selector
+        # type drawn while selecting (box or line)
+        self.imageview.change_image()
         
-        if image_i in self.exclude_images or self.image_fns[i_fn] in self.exclude_images:
-            self.excludetext.set_text('EXCLUDED')
-        else: 
-            self.excludetext.set_text('')
+        # Clear any previous patches
+        for group in self.roi_patches:
+            for patch in group:
+                patch.remove()
+        self.roi_patches = []
 
-
-        if self.use_mask_image:
-            showimage = self.images[image_i] - self.mask_image
+        self.roi_groups = []
+        
+        if self.selections:
+            for selection in self.selections:
+                self.set_roi(*selection, user_made=False)
         else:
-            showimage = self.images[image_i]
+            self.imageview.images_plotter.update()
 
-        self.images_plotter.imshow(showimage, roi_callback=self.set_roi,
-                cmap='gray', slider=self.show_controls,
-                roi_drawtype=self.roi_drawtypes[self.roitype_selection.ticked[0]])
-
-
-    @staticmethod
-    def get_displacements(results):
+    def new_group(self):
         '''
-        Returns the directionless mangitude of the motion (displacement).
+        Advance to the next ROI group.
         '''
-        return [np.sqrt(np.array(x)**2+np.array(y)**2) for x,y in results]
+        self.current_roi_group += 1
 
 
-    @staticmethod
-    def get_destructive_displacement_mean(results):
+    def fill_grid(self):
         '''
-        Takes first the mean of the x and y components separately, and then
-        calculates the directionless magnitude (displacement).
-
-        This way the "random walk" does not pollute the mean so much as when
-        taking the mean of the directionless magnitudes.
+        Create a selection spanning the whole image and distribute
+        cross-correlation windows everywhere.
         '''
-        x = [x for x,y in results]
-        y = [y for x,y in results]
-        return np.sqrt(np.mean(x, axis=0)**2 + np.mean(y, axis=0)**2)
+        self.set_roi(0,0,*reversed(self.image_shape))
 
 
-    def plot_results(self):
+    def clear_selections(self):
         '''
-        Plots (time, displacement).
+        Clear current user selections and ROIs (fresh start)
         '''
+        self.selections = []
+        self.update_grid()
 
-        self.results_plotter.set_toolbar_visibility(
-                'show_toolbar' in self.results_plotter_opts.ticked)
+        self.roi_groups = []
+        self.current_roi_group = 0
 
-        self.results_plotter.ax.clear()
+    
+    def undo(self):
+        '''
+        Undo a ROI selection made by the user.
+        '''
+        if len(self.selections) == 0:
+            self.set_status('Nothing to undo')
+            return None
 
-        for i_roi_group, result in enumerate(self.results):
-            color = self.colors.to_rgba(i_roi_group%self.colors.get_clim()[1])
-            displacements = [np.sqrt(np.array(x)**2+np.array(y)**2) for x,y in result]
-            
-            if 'show_individual' in self.results_plotter_opts.ticked:
-                N_toplot = max( len(displacements), 50 )
-                for d in displacements[0:N_toplot]:
-                    self.results_plotter.plot(d, ax_clear=False, color=color, lw=0.5)
-            
-            if 'show_mean' in self.results_plotter_opts.ticked:
-                self.results_plotter.plot(self.get_destructive_displacement_mean(result), ax_clear=False, color=color, lw=2)
+        # Index of the roigroup to be undone
+        i_roigroup = self.selections[-1][-1]['i_roigroup']
 
-
-    def _included_image_fns(self):
-        return [fn for i_fn, fn in enumerate(self.image_fns) if fn not in self.exclude_images and i_fn not in self.exclude_images]
+        # Clear the previous selection data
+        self.selections = self.selections[:-1]
+        
+        # Clear the corresponding ROI patches
+        N_rois_remove = len(self.roi_patches[-1])
+        for patch in self.roi_patches[-1]:
+            patch.remove()
+        self.roi_patches = self.roi_patches[:-1]
+        
+        # Clear the actual ROIs
+        self.roi_groups[i_roigroup] = self.roi_groups[i_roigroup][:-N_rois_remove]
+        
+        self.imview.images_plotter.update()
+        self.set_status('Undone windows {} in ROI group {}'.format(N_rois_remove, i_roigroup))
     
 
-    def _len_included_frames(self):
-        return sum([self.N_frames.get(fn, 1) for fn in self._included_image_fns()])
+    def set_status(self, *args, **kwargs):
+        if self.statusbar:
+            self.statusbar.set_status(*args, **kwargs)
+
+
+
+
+
+class StatusBar(tk.Frame):
+
+    def __init__(self, tk_parent):
+        tk.Frame.__init__(self, tk_parent)
+        self.parent = tk_parent
+        self.status = tk.Label(self, text='Nothing to do')
+
+    def set_status(self, text):
+        '''
+        Shows info text at the window bottom.
+        '''
+        self.status.config(text=text)
+        self.status.update_idletasks()
+ 
+
+class MovemeterAnalyser(tk.Frame):
+    
+    def __init__(self, tk_parent, movemeter, settings_tab):
+        super().__init__(tk_parent)
+        self.parent = tk_parent
+        
+        self.movemeter = movemeter
+
+        self.calculate_button = tk.Button(self, text='Movement',
+                command=self.measure_movement)
+        self.calculate_button.grid(row=1, column=1)
+        
+        self.brightness_do_button = tk.Button(self, text='Brightness',
+                command=self.measure_brightness)
+        self.brightness_do_button.grid(row=1, column=2)
+
+        self.stop_button = tk.Button(self, text='Stop',
+                command=self.stop)
+        self.stop_button.grid(row=1, column=3)
+
+
+       
+        # Movement parameters
+        self.parview = settings_tab
+        self.parview.columnconfigure(1, weight=1)
+        self.movemeter_settings = MovemeterSettings(self.parview)
+        self.movemeter_settings.grid(column=1,sticky='NSWE')
+
+ 
+        # Brightness parameters
+        self.brightness_view = settings_tab
+        self.brightness_view.columnconfigure(1, weight=1)
+        
+        self.brightness_tickboxes = {}
+        for name, options in self.movemeter.measure_brightness_opt.items():
+            frame = TickboxFrame(
+                    self.brightness_view, options, single_select=True)
+            frame.grid()
+            self.brightness_tickboxes[name] = frame
+
+        
+        self.datainput = None
+        self.roidrawer = None
+        self.plotter = None
+        self.statusbar = None
+        self.settings = None
+
+
+    def connect_widgets(self, datainput=None, roidrawer=None,
+                       plotter=None, statusbar=None):
+        if datainput is not None:
+            self.datainput = datainput
+        if roidrawer is not None:
+            self.roidrawer = roidrawer
+        if plotter is not None:
+            self.plotter = plotter
+        if statusbar is not None:
+            self.statusbar = statusbar
+
+    def stop():
+        '''
+        Stop any ongoing motion analysis.
+        '''
+        self.exit=True
+        if self.movemeter:
+            self.movemeter.stop()
+
+    
+    def measure_movement(self, target=None):
+        '''
+        Run motion analysis for the images in the currently selected
+        directory, using the drawn ROIs.
+        '''
+
+        if not self.datainput or not self.roidrawer:
+            return # Nothing to do
+        
+        if target is None:
+            target = lambda: self.movemeter.measure_movement(0, optimized=True)
+
+        if self.datainput.image_fns and self.roidrawer.roi_groups:
+            print('Started roi measurements')
+           
+            self.results = []
+            
+            self.movemeter = Movemeter(print_callback=self.set_status,
+                    **self.movemeter_settings.get_current())
+           
+            for rois in self.roidrawer.roi_groups:
+                # Set movemeted data
+                images = [self.datainput._included_image_fns()]
+                self.movemeter.set_data(images, [rois])
+                
+                self.results.append( target() )
+            
+            self.plotter.plot_results(self.results)
+
+            # FIXME heatmap plotting
+            #self.plotter.calculate_heatmap()
+            #self.plotter.change_heatmap(1)
+
+        else:
+            self.set_status('No images or ROIs selected')
+    
+
+    def measure_brightness(self):
+        kwargs = {}
+        for name, frame in self.brightness_tickboxes.items():
+            kwargs[name] = frame.ticked[0]
+
+        bmes = lambda: self.movemeter.measure_brightness(0, **kwargs)
+        self.measure_movement(target=bmes)
+
+    
+    def set_status(self, *args, **kwargs):
+        if self.statusbar:
+            self.statusbar.set_status(*args, **kwargs)
+
+
+
+
+class ResultsPlotter(tk.Frame):
+
+    def __init__(self, tk_parent):
+        tk.Frame.__init__(self, tk_parent)
+        self.parent = tk_parent
+ 
+        # Results view: Analysed traces
+        # ------------------------------------
+        
+        self.tabs = Tabs(self, ['Displacement', 'Heatmap'])
+        self.tabs.grid(row=0, column=0, sticky='NSWE')
+        self.resview = self.tabs.pages[0]
+        self.heatview = self.tabs.pages[1]
+
+        self.resview.rowconfigure(2, weight=1)
+        self.resview.columnconfigure(1, weight=1)
+        self.heatview.columnconfigure(2, weight=1)
+        self.heatview.rowconfigure(2, weight=1)
+
+        self.results_plotter = CanvasPlotter(self.resview)
+        self.results_plotter.grid(row=2, column=1, sticky='NSWE')
+       
+        # Results show options
+        self.results_plotter_opts = TickboxFrame(
+                self.resview,
+                ['show_individual', 'show_mean', 'show_toolbar'],
+                defaults=[True,True,False],
+                callback=self.plot_results)
+        self.results_plotter_opts.grid(row=1, column=1, sticky='NSWE')
+
+        self.heatmap_plotter = CanvasPlotter(self.heatview)
+        self.heatmap_plotter.grid(row=2, column=2, sticky='NSWE') 
+        
+        self.heatmap_slider = tk.Scale(self.heatview, from_=0, to=0,
+            orient=tk.HORIZONTAL, command=self.change_heatmap)
+        self.heatmap_slider.grid(row=0, column=1, sticky='NSWE')
+        
+        self.heatmapcap_slider = tk.Scale(self.heatview, from_=0.1, to=100,
+            orient=tk.HORIZONTAL, resolution=0.1, command=self.change_heatmap)
+        self.heatmapcap_slider.set(20)
+        self.heatmapcap_slider.grid(row=0, column=2, sticky='NSWE') 
+        
+        self.heatmap_firstcap_slider = tk.Scale(self.heatview, from_=0.1, to=100,
+            orient=tk.HORIZONTAL, resolution=0.1, command=self.change_heatmap)
+        self.heatmap_firstcap_slider.set(20)
+        self.heatmap_firstcap_slider.grid(row=1, column=2, sticky='NSWE') 
+        
+        self.colors = None
+
+    def connect_widgets(self, colors=None):
+        if colors is not None:
+            self.colors = colors
 
 
     def calculate_heatmap(self):
@@ -1505,58 +1433,72 @@ class MovemeterTkGui(tk.Frame):
             return image
         else:
             self.heatmap_plotter.imshow(image, normalize=False)
-   
-
-    def set_settings(self, settings):
+ 
+    @staticmethod
+    def get_displacements(results):
         '''
-        Apply the given settings.
-
-        Arguments
-        ----------
-        settings : dict
-            A dictionary of settings.
+        Returns the directionless mangitude of the motion (displacement).
         '''
-        for key, value in settings.items():
-            if key == 'block_size':
-                self.blocksize_slider.set(value)
-            elif key == 'block_distance':
-                self.overlap_slider.set(value)
-            elif key == 'maximum_movement':
-                self.movemeter_settings.maxmovement_slider.set(value)
-            elif key == 'upscale':
-                self.movemeter_settings.upscale_slider.set(value)
-            elif key == 'cpu_cores':
-                self.movemeter_settings.cores_slider.set(value)
-            elif key == 'exclude_images':
-                self.exclude_images = value
-            elif key == 'measurement_parameters':
-                self.movemeter_settings.tickboxes.states = value
+        return [np.sqrt(np.array(x)**2+np.array(y)**2) for x,y in results]
 
 
-    def set_status(self, text):
+    @staticmethod
+    def get_destructive_displacement_mean(results):
         '''
-        Shows info text at the window bottom.
-        '''
-        self.status.config(text=text)
-        self.status.update_idletasks()
-    
+        Takes first the mean of the x and y components separately, and then
+        calculates the directionless magnitude (displacement).
 
-    def apply_movzip(self, fn=None, rois=False):
+        This way the "random walk" does not pollute the mean so much as when
+        taking the mean of the directionless magnitudes.
         '''
-        Load parts of a movzip and apply settings from it
-        to the current session.
-        '''
-        if fn is None:
-            fn = filedialog.askopenfilename(parent=self, title='Select a movzip',
-                    initialdir=MOVEDIR)
+        x = [x for x,y in results]
+        y = [y for x,y in results]
+        return np.sqrt(np.mean(x, axis=0)**2 + np.mean(y, axis=0)**2)
 
-        settings, filenames, selections, roi_groups, movements = self._load_movzip(fn)
+
+    def plot_results(self, results):
+        '''
+        Plots (time, displacement).
+        '''
+
+        self.results_plotter.set_toolbar_visibility(
+                'show_toolbar' in self.results_plotter_opts.ticked)
+
+        self.results_plotter.ax.clear()
+
+        for i_roi_group, result in enumerate(results):
+            color = self.colors.colors.to_rgba(i_roi_group%self.colors.colors.get_clim()[1])
+            displacements = [np.sqrt(np.array(x)**2+np.array(y)**2) for x,y in result]
+            
+            if 'show_individual' in self.results_plotter_opts.ticked:
+                N_toplot = max( len(displacements), 50 )
+                for d in displacements[0:N_toplot]:
+                    self.results_plotter.plot(d, ax_clear=False, color=color, lw=0.5)
+            
+            if 'show_mean' in self.results_plotter_opts.ticked:
+                self.results_plotter.plot(self.get_destructive_displacement_mean(result), ax_clear=False, color=color, lw=2)
+
+
+
+class ResultsExporter(tk.Frame):   
+    def __init__(self, tk_parent):
+        tk.Frame.__init__(self, tk_parent)
+        self.parent = tk_parent
+ 
+        self.export_button = tk.Button(self, text='Export results',
+                command=self.export_results)
+        self.export_button.grid(row=2, column=1)
         
-        if rois:
-            self.selections = selections
-            self.rois_groups = roi_groups
-            self.update_grid()
+        self.export_name = tk.Entry(self, width=50)
+        self.export_name.insert(0, "enter export name")
+        self.export_name.grid(row=2, column=2)
+ 
+        self.colors = None
 
+
+    def connect_widgets(self, colors=None):
+        if colors is not None:
+            self.colors = colors
 
     def _save_movzip(self, fn=None, only=None):
         '''
@@ -1618,53 +1560,6 @@ class MovemeterTkGui(tk.Frame):
         
         self.set_status('Mozip saved.')
         
-
-
-    def _load_movzip(self, fn):
-        '''
-        Load a movzip, returning its contents.
-
-        Returns
-        -------
-        settings, image_filenames, selections, rois, movements
-        '''
-
-        movzip = []
-
-        with zipfile.ZipFile(fn, 'r') as loadzip:
-            
-            for pfn in ['metadata', 'image_filenames', 'selections', 'rois', 'movements']:
-                try:
-                    with loadzip.open(pfn+'.json', 'r') as fp:
-                        movzip.append( json.loads(fp.read()) )
-        
-                except KeyError:
-                    movzip.append(None)
-
-        return (*movzip,)
-
-    
-    def save_roiview(self, only_rois=False):
-        '''
-        Save the current image view with ROIs.
-
-        Arguments
-        ---------
-        only_rois : bool
-            If True, hide the image and show ROIs in the
-            saved image.
-        '''
-        savefn = filedialog.asksaveasfilename()
-        if savefn:
-            fig = self.images_plotter.figure
-            
-            if only_rois:
-                self.images_plotter.imshow_obj.set_visible(False)
-            
-            fig.savefig(savefn, dpi=600, transparent=only_rois)
-            
-            if only_rois:
-                self.images_plotter.imshow_obj.set_visible(True)
 
 
 
@@ -1784,7 +1679,318 @@ class MovemeterTkGui(tk.Frame):
         save_heatmaps(self.heatmap_images, self.image_fns, subsavedir)
         
         self.set_status('DONE Saving :)')
-          
+     
+
+class MovemeterTkGui(tk.Frame):
+    '''Main widget for the Movemeter tkinter GUI.
+    
+    ATTRIBUTES
+    -----------
+    self.parent : object
+        tkinter parent widget
+
+
+    exclude_images : list
+        List of image filenames or indices to exclude from the analysis.
+
+   
+   
+    selections : list
+    
+    '''
+
+    def __init__(self, tk_parent):
+        tk.Frame.__init__(self, tk_parent)
+        self.parent = tk_parent
+
+        # Motion analysis
+        self.movemeter = Movemeter()
+        self.results = []
+        self.heatmap_images = []
+        self.batch_name = 'batch_name'
+
+
+        self.statusbar = StatusBar(self)
+        self.statusbar.grid(row=3, column=0, columnspan=2)
+
+
+        self.folview = DataInputWidget(
+                self, self.movemeter, self.statusbar)
+        self.folview.grid(row=0, column=0, sticky='NSWE')
+        
+        self.imview = ImageROIWidget(self)
+        self.imview.grid(row=1, column=0, sticky='NSWE')
+
+        self.colors = ColorsWidget(self.imview)
+        self.colors.grid(row=0, column=1)
+
+
+        # Operations view
+        # -------------------------
+        self.opview = tk.LabelFrame(self, text='Command center')
+        self.opview.grid(row=0, column=1, sticky='NSWE')
+        
+        self.tabs = Tabs(self.opview,
+                ['ROI creation', 'Analyser settings'],
+                draw_frame = True)
+        self.tabs.grid(row=0, column=0, sticky='NSWE')
+        self.tabs.set_page(1) 
+       
+        self.roidrawer = BoxRoiDrawer(self.imview, self.tabs.tabs[0])
+        self.roiview = self.tabs.tabs[0]
+        self.imview.connect_widgets(roidrawer = self.roidrawer)
+
+
+        self.actframe = MovemeterAnalyser(self.opview, self.movemeter, self.tabs.tabs[1])
+        self.actframe.grid(row=1, column=0)
+        
+        self.results = ResultsPlotter(self)
+        self.results.grid(row=1, column=1)
+
+        self.columnconfigure(1, weight=1)    
+        self.columnconfigure(2, weight=1)
+        self.rowconfigure(1, weight=1)
+
+        # Connect widgets
+        self.colors.connect_widgets(
+                roidrawer = self.roidrawer,
+                )
+
+        self.imview.connect_widgets(
+                datainput = self.folview,
+                colors = self.colors,
+                )
+        
+        self.roidrawer.connect_widgets(
+                colors = self.colors,
+                imageview = self.imview,
+                )
+
+        self.actframe.connect_widgets(
+                datainput = self.folview,
+                roidrawer = self.roidrawer,
+                plotter = self.results,
+                statusbar = self.statusbar)
+        
+        self.results.connect_widgets(
+                colors = self.colors,
+                )
+
+
+    def open_settings(self):
+        '''
+        Placeholder for the settings dialog.
+        '''
+        raise NotImplementedError
+
+
+    def recalculate_old(self, directory=None):
+        '''
+        Load old movzip, look the ROI extremes, and draw a new ROI
+        but using the current block settings (block size and distance).
+
+        Useful for testing how the results change when the selected
+        area remains approximately the same but the block settings change.
+        '''
+
+        if directory == None:
+            directory = filedialog.askdirectory()
+            if not directory:
+                return None
+        
+        if not self._ask_batchname():
+            return None
+ 
+        self.exit = False
+        for root, dirs, fns in os.walk(directory):
+            
+            if self.exit:
+                break
+
+            movzip = [fn for fn in os.listdir(root) if fn.startswith('movemeter') and fn.endswith('.zip')]
+            
+            if movzip:
+                settings, filenames, selections, rois, movements = self._load_movzip(os.path.join(root, movzip[0]))
+                
+                self.folder_selected(
+                        os.path.dirname(filenames[0]), usermade=False)
+                
+                x1, y1 = np.min(rois, axis=0)[0:2]
+                x2, y2 = np.max(rois, axis=0)[0:2] + rois[0][3]
+                self.set_roi(x1,y1,x2,y2)
+
+                self.measure_movement()
+
+                self.export_results(batch_name=self.batch_name)
+
+        self.set_status('Results recalculated :)')
+
+
+    def replot_heatmap(self, directory=None):
+        '''
+        Like recalculate old, but relies in the old movement analysis results
+        '''
+        if directory == None:
+            directory = filedialog.askdirectory()
+            if not directory:
+                return None
+        
+        if not self._ask_batchname():
+            return None
+ 
+        self.exit = False
+        for root, dirs, fns in os.walk(directory):
+            
+            if self.exit:
+                break
+
+            movzip = [fn for fn in os.listdir(root) if fn.startswith('movemeter') and fn.endswith('.zip')]
+            if movzip:
+                settings, filenames, self.selections, self.roi_groups, self.results = self._load_movzip(os.path.join(root, movzip[0])) 
+                
+                self.folder_selected(
+                        os.path.dirname(filenames[0]), usermade=False)
+                self.set_settings(settings)
+
+                self.plot_results()
+                self.calculate_heatmap()
+                self.change_heatmap(1)
+
+                self.export_results(batch_name=self.batch_name)
+
+        self.set_status('Heatmaps replotted :)')
+
+    
+    def _ask_batchname(self):
+        name = simpledialog.askstring('Batch name', 'Name new folder')
+        if name:
+            self.batch_name = name
+            return True
+        else:
+            return False
+
+
+    def batch_process(self, fill_maxgrid=False):
+        '''
+        fill_maxgrid : bool
+            If True, ignore current ROIs and fill a full frame grid
+            using the current slider options.
+        '''
+
+        if not self._ask_batchname():
+            return None
+        
+        self.exit = False
+        for folder in self.folders:
+            if self.exit:
+                break
+            self.folder_selected(folder, usermade=False)
+            
+            if fill_maxgrid:
+                self.fill_grid()
+            
+            self.measure_movement()
+            self.export_results(batch_name=self.batch_name)
+
+
+ 
+
+
+  
+
+    def set_settings(self, settings):
+        '''
+        Apply the given settings.
+
+        Arguments
+        ----------
+        settings : dict
+            A dictionary of settings.
+        '''
+        for key, value in settings.items():
+            if key == 'block_size':
+                self.blocksize_slider.set(value)
+            elif key == 'block_distance':
+                self.overlap_slider.set(value)
+            elif key == 'maximum_movement':
+                self.movemeter_settings.maxmovement_slider.set(value)
+            elif key == 'upscale':
+                self.movemeter_settings.upscale_slider.set(value)
+            elif key == 'cpu_cores':
+                self.movemeter_settings.cores_slider.set(value)
+            elif key == 'exclude_images':
+                self.exclude_images = value
+            elif key == 'measurement_parameters':
+                self.movemeter_settings.tickboxes.states = value
+
+
+   
+
+    def apply_movzip(self, fn=None, rois=False):
+        '''
+        Load parts of a movzip and apply settings from it
+        to the current session.
+        '''
+        if fn is None:
+            fn = filedialog.askopenfilename(parent=self, title='Select a movzip',
+                    initialdir=MOVEDIR)
+
+        settings, filenames, selections, roi_groups, movements = self._load_movzip(fn)
+        
+        if rois:
+            self.selections = selections
+            self.rois_groups = roi_groups
+            self.update_grid()
+
+
+    def _load_movzip(self, fn):
+        '''
+        Load a movzip, returning its contents.
+
+        Returns
+        -------
+        settings, image_filenames, selections, rois, movements
+        '''
+
+        movzip = []
+
+        with zipfile.ZipFile(fn, 'r') as loadzip:
+            
+            for pfn in ['metadata', 'image_filenames', 'selections', 'rois', 'movements']:
+                try:
+                    with loadzip.open(pfn+'.json', 'r') as fp:
+                        movzip.append( json.loads(fp.read()) )
+        
+                except KeyError:
+                    movzip.append(None)
+
+        return (*movzip,)
+
+    
+    def save_roiview(self, only_rois=False):
+        '''
+        Save the current image view with ROIs.
+
+        Arguments
+        ---------
+        only_rois : bool
+            If True, hide the image and show ROIs in the
+            saved image.
+        '''
+        savefn = filedialog.asksaveasfilename()
+        if savefn:
+            fig = self.images_plotter.figure
+            
+            if only_rois:
+                self.images_plotter.imshow_obj.set_visible(False)
+            
+            fig.savefig(savefn, dpi=600, transparent=only_rois)
+            
+            if only_rois:
+                self.images_plotter.imshow_obj.set_visible(True)
+
+
+     
 
 def main():
     '''
